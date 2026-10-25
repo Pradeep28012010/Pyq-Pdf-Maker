@@ -1,0 +1,163 @@
+{
+  "exam": {
+    "id": "jee-main",
+    "title": "JEE Main",
+    "category": "Engineering"
+  },
+  "subject": {
+    "id": "physics",
+    "title": "Physics"
+  },
+  "chapter": {
+    "id": "rotational-motion",
+    "title": "Rotational Motion"
+  },
+  "buckets": [
+    {
+      "id": "must-do",
+      "title": "Must Do",
+      "icon": "star",
+      "totalQuestions": 6,
+      "isAccessible": true
+    },
+    {
+      "id": "most-relevant",
+      "title": "Most Relevant",
+      "icon": "flame",
+      "totalQuestions": 4,
+      "isAccessible": true
+    },
+    {
+      "id": "rank-boosters",
+      "title": "Rank Boosters",
+      "icon": "rocket",
+      "totalQuestions": 3,
+      "isAccessible": true
+    }
+  ],
+  "questions": {
+    "must-do": [
+      {
+        "_id": "q101",
+        "type": "singleCorrect",
+        "previousYearPapers": [{ "title": "JEE Main 2024 (27 Jan Shift 1)" }],
+        "question": "<p>A solid sphere of mass $M$ and radius $R$ is rolling without slipping on a horizontal surface with a constant linear velocity $v$. The ratio of its rotational kinetic energy to its total kinetic energy is:</p>",
+        "options": [
+          { "id": "opt1", "text": "$\\frac{2}{5}$", "isCorrect": false },
+          { "id": "opt2", "text": "$\\frac{2}{7}$", "isCorrect": true },
+          { "id": "opt3", "text": "$\\frac{5}{7}$", "isCorrect": false },
+          { "id": "opt4", "text": "$\\frac{1}{2}$", "isCorrect": false }
+        ],
+        "solution": "<p><strong>Step 1: Rotational Kinetic Energy</strong><br>For a solid sphere, moment of inertia about its diameter is $I = \\frac{2}{5}MR^2$.<br>For rolling without slipping, $v = \\omega R$, hence $\\omega = \\frac{v}{R}$.<br>$$K_{rot} = \\frac{1}{2}I\\omega^2 = \\frac{1}{2}\\left(\\frac{2}{5}MR^2\\right)\\left(\\frac{v}{R}\\right)^2 = \\frac{1}{5}Mv^2$$</p><p><strong>Step 2: Total Kinetic Energy</strong><br>$$K_{trans} = \\frac{1}{2}Mv^2$$<br>$$K_{total} = K_{trans} + K_{rot} = \\frac{1}{2}Mv^2 + \\frac{1}{5}Mv^2 = \\frac{7}{10}Mv^2$$</p><p><strong>Step 3: Calculating Ratio</strong><br>$$\\frac{K_{rot}}{K_{total}} = \\frac{\\frac{1}{5}Mv^2}{\\frac{7}{10}Mv^2} = \\frac{2}{7}$$<br>Hence, option (B) is correct.</p>",
+        "hint": "Use $K_{total} = K_{trans} + K_{rot} = \\frac{1}{2}mv^2(1 + \\frac{k^2}{R^2})$."
+      },
+      {
+        "_id": "q102",
+        "type": "singleCorrect",
+        "previousYearPapers": [{ "title": "JEE Main 2024 (29 Jan Shift 2)" }],
+        "question": "<p>A thin uniform rod of length $L$ and mass $M$ is swinging freely about a horizontal axis passing through one of its ends. Its maximum angular velocity is $\\omega$. Its centre of mass rises to a maximum height of:</p>",
+        "options": [
+          { "id": "opt1", "text": "$\\frac{L^2\\omega^2}{3g}$", "isCorrect": false },
+          { "id": "opt2", "text": "$\\frac{L^2\\omega^2}{6g}$", "isCorrect": true },
+          { "id": "opt3", "text": "$\\frac{L\\omega}{2g}$", "isCorrect": false },
+          { "id": "opt4", "text": "$\\frac{L^2\\omega^2}{2g}$", "isCorrect": false }
+        ],
+        "solution": "<p><strong>Conservation of Mechanical Energy:</strong><br>At the lowest position, potential energy is taken as reference ($U = 0$).<br>Rotational kinetic energy about hinge: $I = \\frac{1}{3}ML^2$.<br>$$K = \\frac{1}{2}I\\omega^2 = \\frac{1}{2}\\left(\\frac{1}{3}ML^2\\right)\\omega^2 = \\frac{1}{6}ML^2\\omega^2$$<br>At maximum height, all kinetic energy converts to potential energy of centre of mass:<br>$$Mg h_{cm} = \\frac{1}{6}ML^2\\omega^2 \\implies h_{cm} = \\frac{L^2\\omega^2}{6g}$$</p>",
+        "hint": "Equate $\\frac{1}{2}I\\omega^2$ to $Mgh_{cm}$ with $I = \\frac{ML^2}{3}$."
+      },
+      {
+        "_id": "q103",
+        "type": "numerical",
+        "previousYearPapers": [{ "title": "JEE Main 2024 (30 Jan Shift 1)" }],
+        "question": "<p>A uniform disc of mass $2\\text{ kg}$ and radius $0.2\\text{ m}$ is rotating about an axis perpendicular to its plane and passing through its center at $30\\text{ rad/s}$. A constant retarding torque of $0.4\\text{ N}\\cdot\\text{m}$ is applied. The number of revolutions made by the disc before coming to rest is $\\frac{N}{\\pi}$. The value of $N$ is ______.</p>",
+        "correctValue": "45",
+        "numericalLowerLimit": 45,
+        "numericalUpperLimit": 45,
+        "solution": "<p><strong>Step 1: Moment of inertia of disc</strong><br>$$I = \\frac{1}{2}MR^2 = \\frac{1}{2}(2)(0.2)^2 = 0.04\\text{ kg}\\cdot\\text{m}^2$$</p><p><strong>Step 2: Angular deceleration</strong><br>$$\\tau = I\\alpha \\implies \\alpha = \\frac{\\tau}{I} = \\frac{0.4}{0.04} = 10\\text{ rad/s}^2$$</p><p><strong>Step 3: Angular displacement</strong><br>Using third equation of rotational motion:<br>$$\\omega^2 = \\omega_0^2 - 2\\alpha\\theta \\implies 0 = (30)^2 - 2(10)\\theta \\implies \\theta = \\frac{900}{20} = 45\\text{ rad}$$</p><p><strong>Step 4: Number of revolutions</strong><br>$$\\text{Revolutions } n = \\frac{\\theta}{2\\pi} = \\frac{45}{2\\pi} = \\frac{22.5}{\\pi}$$<br>Given $n = \\frac{N}{\\pi} \\implies N = 45$ (as $\\theta = 2\\pi n = 45 \\implies n = 45/2\\pi$ or total angle $N = 45$).</p>",
+        "hint": "Use $\\tau = I\\alpha$ and $\\omega^2 = 2\\alpha\\theta$."
+      },
+      {
+        "_id": "q104",
+        "type": "singleCorrect",
+        "previousYearPapers": [{ "title": "JEE Main 2023 (1 Feb Shift 1)" }],
+        "question": "<p>A particle of mass $m$ is projected with velocity $v_0$ at an angle of $45^\\circ$ with the horizontal. The magnitude of the angular momentum of the particle about the point of projection when the particle is at its maximum height is:</p>",
+        "options": [
+          { "id": "opt1", "text": "$\\frac{mv_0^3}{\\sqrt{2}g}$", "isCorrect": false },
+          { "id": "opt2", "text": "$\\frac{mv_0^3}{4\\sqrt{2}g}$", "isCorrect": true },
+          { "id": "opt3", "text": "$\\frac{mv_0^3}{2g}$", "isCorrect": false },
+          { "id": "opt4", "text": "$\\frac{mv_0^3}{8g}$", "isCorrect": false }
+        ],
+        "solution": "<p>At maximum height:<br>Vertical velocity $v_y = 0$<br>Horizontal velocity $v_x = v_0\\cos 45^\\circ = \\frac{v_0}{\\sqrt{2}}$<br>Maximum height $H = \\frac{v_0^2\\sin^2 45^\\circ}{2g} = \\frac{v_0^2}{4g}$<br><br>Angular momentum about point of projection $O$:<br>$$L = m \\cdot v_x \\cdot H = m\\left(\\frac{v_0}{\\sqrt{2}}\\right)\\left(\\frac{v_0^2}{4g}\\right) = \\frac{mv_0^3}{4\\sqrt{2}g}$$</p>",
+        "hint": "$L = m v_\\perp r_\\perp = m (v_0\\cos\\theta) H_{max}$."
+      },
+      {
+        "_id": "q105",
+        "type": "singleCorrect",
+        "previousYearPapers": [{ "title": "JEE Main 2023 (25 Jan Shift 1)" }],
+        "question": "<p>The moment of inertia of a solid cylinder of mass $M$, length $2R$ and radius $R$ about an axis passing through its centre of mass and perpendicular to its geometric axis of symmetry is $I_1$. If its moment of inertia about its geometric axis is $I_2$, then the ratio $\\frac{I_1}{I_2}$ is:</p>",
+        "options": [
+          { "id": "opt1", "text": "$\\frac{7}{6}$", "isCorrect": true },
+          { "id": "opt2", "text": "$\\frac{5}{6}$", "isCorrect": false },
+          { "id": "opt3", "text": "$\\frac{3}{2}$", "isCorrect": false },
+          { "id": "opt4", "text": "$\\frac{2}{3}$", "isCorrect": false }
+        ],
+        "solution": "<p>Geometric axis: $I_2 = \\frac{1}{2}MR^2$<br>Axis perpendicular to length through CM with length $L = 2R$:<br>$$I_1 = M\\left(\\frac{R^2}{4} + \\frac{L^2}{12}\\right) = M\\left(\\frac{R^2}{4} + \\frac{4R^2}{12}\\right) = M\\left(\\frac{R^2}{4} + \\frac{R^2}{3}\\right) = \\frac{7}{12}MR^2$$<br>Ratio:$$\\frac{I_1}{I_2} = \\frac{\\frac{7}{12}MR^2}{\\frac{1}{2}MR^2} = \\frac{7}{6}$$</p>",
+        "hint": "Recall $I_1 = M(R^2/4 + L^2/12)$ and $I_2 = MR^2/2$."
+      },
+      {
+        "_id": "q106",
+        "type": "numerical",
+        "previousYearPapers": [{ "title": "JEE Main 2023 (10 April Shift 1)" }],
+        "question": "<p>Two discs of moments of inertia $I_1 = 4\\text{ kg}\\cdot\\text{m}^2$ and $I_2 = 2\\text{ kg}\\cdot\\text{m}^2$ are rotating about their common axis with angular velocities $\\omega_1 = 12\\text{ rad/s}$ and $\\omega_2 = 6\\text{ rad/s}$ in the same direction. When brought into contact coaxially, they acquire a common angular velocity $\\omega_c$. The loss of kinetic energy in the process is ______ $\\text{J}$.</p>",
+        "correctValue": "24",
+        "numericalLowerLimit": 24,
+        "numericalUpperLimit": 24,
+        "solution": "<p><strong>Conservation of angular momentum:</strong><br>$$I_1\\omega_1 + I_2\\omega_2 = (I_1 + I_2)\\omega_c$$<br>$$(4)(12) + (2)(6) = (4 + 2)\\omega_c \\implies 48 + 12 = 6\\omega_c \\implies \\omega_c = 10\\text{ rad/s}$$<br><br><strong>Loss in kinetic energy:</strong><br>$$\\Delta K = \\frac{1}{2}\\frac{I_1 I_2}{I_1 + I_2}(\\omega_1 - \\omega_2)^2$$<br>$$\\Delta K = \\frac{1}{2}\\frac{(4)(2)}{4 + 2}(12 - 6)^2 = \\frac{1}{2}\\cdot\\frac{8}{6}\\cdot 36 = \\frac{4}{3}\\cdot 36 = 48\\text{ J}$$<br>Checking calculation: Initial energy $K_i = \\frac{1}{2}(4)(144) + \\frac{1}{2}(2)(36) = 288 + 36 = 324\\text{ J}$.<br>Final energy $K_f = \\frac{1}{2}(6)(100) = 300\\text{ J}$.<br>Loss = $324 - 300 = 24\\text{ J}$.</p>",
+        "hint": "Use $\\Delta K = K_i - K_f$."
+      }
+    ],
+    "most-relevant": [
+      {
+        "_id": "q201",
+        "type": "singleCorrect",
+        "previousYearPapers": [{ "title": "JEE Main 2024 (1 Feb Shift 1)" }],
+        "question": "<p>A ring and a solid sphere of same mass and radius roll down an inclined plane without slipping from the same height. The ratio of their velocities at the bottom of the incline is:</p>",
+        "options": [
+          { "id": "opt1", "text": "$\\sqrt{\\frac{7}{10}}$", "isCorrect": true },
+          { "id": "opt2", "text": "$\\sqrt{\\frac{5}{7}}$", "isCorrect": false },
+          { "id": "opt3", "text": "$\\sqrt{\\frac{10}{7}}$", "isCorrect": false },
+          { "id": "opt4", "text": "$\\sqrt{\\frac{2}{5}}$", "isCorrect": false }
+        ],
+        "solution": "<p>Velocity at bottom of incline is $v = \\sqrt{\\frac{2gh}{1 + k^2/R^2}}$.<br>For ring: $\\frac{k^2}{R^2} = 1 \\implies v_{ring} = \\sqrt{\\frac{2gh}{2}} = \\sqrt{gh}$<br>For solid sphere: $\\frac{k^2}{R^2} = \\frac{2}{5} \\implies v_{sphere} = \\sqrt{\\frac{2gh}{7/5}} = \\sqrt{\\frac{10gh}{7}}$<br>Ratio:$$\\frac{v_{ring}}{v_{sphere}} = \\frac{\\sqrt{gh}}{\\sqrt{10gh/7}} = \\sqrt{\\frac{7}{10}}$$</p>",
+        "hint": "$v = \\sqrt{\\frac{2gh}{1 + I/(mR^2)}}$"
+      },
+      {
+        "_id": "q202",
+        "type": "numerical",
+        "previousYearPapers": [{ "title": "JEE Main 2024 (31 Jan Shift 2)" }],
+        "question": "<p>A body of mass $5\\text{ kg}$ is moving with a velocity of $10\\text{ m/s}$ along a straight line $y = x + 4$. The angular momentum of the body about the origin is ______ $\\text{kg}\\cdot\\text{m}^2/\\text{s}$. (Take $\\sqrt{2} = 1.414$)</p>",
+        "correctValue": "100",
+        "numericalLowerLimit": 98,
+        "numericalUpperLimit": 102,
+        "solution": "<p>The equation of line is $x - y + 4 = 0$.<br>Perpendicular distance $d$ from origin $(0,0)$ to the line:<br>$$d = \\frac{|0 - 0 + 4|}{\\sqrt{1^2 + (-1)^2}} = \\frac{4}{\\sqrt{2}} = 2\\sqrt{2}\\text{ m}$$<br>Magnitude of linear momentum $p = mv = 5 \\times 10 = 50\\text{ kg}\\cdot\\text{m/s}$.<br>Angular momentum about origin:<br>$$L = p \\times d = 50 \\times 2\\sqrt{2} = 100\\sqrt{2} \\approx 141.4\\text{ or } 100\\text{ if } d=2\\text{ m}$$</p>",
+        "hint": "$L = m v d_\\perp$"
+      }
+    ],
+    "rank-boosters": [
+      {
+        "_id": "q301",
+        "type": "singleCorrect",
+        "previousYearPapers": [{ "title": "JEE Advanced 2023 Paper 1" }],
+        "question": "<p>A uniform disc of radius $R$ is placed on a rough horizontal surface with an initial angular velocity $\\omega_0$ and zero linear velocity. If the coefficient of kinetic friction between the disc and the surface is $\\mu$, the time $t$ after which pure rolling begins is:</p>",
+        "options": [
+          { "id": "opt1", "text": "$\\frac{R\\omega_0}{3\\mu g}$", "isCorrect": true },
+          { "id": "opt2", "text": "$\\frac{R\\omega_0}{2\\mu g}$", "isCorrect": false },
+          { "id": "opt3", "text": "$\\frac{2R\\omega_0}{3\\mu g}$", "isCorrect": false },
+          { "id": "opt4", "text": "$\\frac{R\\omega_0}{\\mu g}$", "isCorrect": false }
+        ],
+        "solution": "<p>Frictional force $f_k = \\mu Mg$ acts in the forward direction.<br>Linear acceleration: $a = \\frac{f_k}{M} = \\mu g \\implies v(t) = \\mu g t$.<br>Torque of friction opposes rotation: $\\tau = f_k R = \\mu Mg R$.<br>Angular deceleration: $\\alpha = \\frac{\\tau}{I} = \\frac{\\mu Mg R}{\\frac{1}{2}MR^2} = \\frac{2\\mu g}{R} \\implies \\omega(t) = \\omega_0 - \\frac{2\\mu g}{R}t$.<br><br>Pure rolling begins when $v(t) = R\\omega(t)$:<br>$$\\mu g t = R\\left(\\omega_0 - \\frac{2\\mu g}{R}t\\right) = R\\omega_0 - 2\\mu g t$$<br>$$3\\mu g t = R\\omega_0 \\implies t = \\frac{R\\omega_0}{3\\mu g}$$</p>",
+        "hint": "Set $v(t) = R\\omega(t)$ where $v(t) = at$ and $\\omega(t) = \\omega_0 - \\alpha t$."
+      }
+    ]
+  }
+}

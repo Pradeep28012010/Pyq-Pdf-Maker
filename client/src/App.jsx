@@ -8,6 +8,7 @@ import PrintableDocument from './components/PrintableDocument';
 import LoginModal from './components/LoginModal';
 import { api, tokenStorage } from './services/api';
 import { downloadOfflineHtml } from './utils/exportHtml';
+import bundledDemoData from './demo_data.json';
 import { 
   Sparkles, 
   Printer, 
@@ -100,33 +101,46 @@ export default function App() {
     loadDemo();
   };
 
+  const applyDemoData = (data) => {
+    if (!data) return;
+    setDemoDataStore(data);
+    setIsDemo(true);
+    setUser(null);
+
+    if (data.exam) {
+      setExams([data.exam]);
+      setSelectedExam(data.exam);
+    }
+    if (data.subject) {
+      setSubjects([data.subject]);
+      setSelectedSubject(data.subject);
+    }
+    if (data.chapter) {
+      setChapters([data.chapter]);
+      setSelectedChapter(data.chapter);
+    }
+    if (data.buckets && data.buckets.length > 0) {
+      setBuckets(data.buckets);
+      const defaultBucket = data.buckets[0];
+      setSelectedBucket(defaultBucket);
+      const qs = data.questions?.[defaultBucket.id] || [];
+      setAllQuestions(qs);
+      setSelectedQuestionIds(new Set(qs.map(q => q._id)));
+    }
+  };
+
   const loadDemo = async () => {
+    // 1. Immediately apply bundled data so questions display with zero blank screen!
+    applyDemoData(bundledDemoData);
+
+    // 2. Also attempt to sync from server if available
     try {
       const res = await api.getDemoData();
-      if (res.success) {
-        setDemoDataStore(res.data);
-        setIsDemo(true);
-        setUser(null);
-
-        setExams([res.data.exam]);
-        setSelectedExam(res.data.exam);
-
-        setSubjects([res.data.subject]);
-        setSelectedSubject(res.data.subject);
-
-        setChapters([res.data.chapter]);
-        setSelectedChapter(res.data.chapter);
-
-        setBuckets(res.data.buckets);
-        const defaultBucket = res.data.buckets[0];
-        setSelectedBucket(defaultBucket);
-
-        const qs = res.data.questions[defaultBucket.id] || [];
-        setAllQuestions(qs);
-        setSelectedQuestionIds(new Set(qs.map(q => q._id)));
+      if (res.success && res.data) {
+        applyDemoData(res.data);
       }
     } catch (e) {
-      console.error('Failed to load demo data:', e);
+      console.warn('API demo fetch failed; using bundled demo questions:', e.message);
     }
   };
 
