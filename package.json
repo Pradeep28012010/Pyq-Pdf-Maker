@@ -1,0 +1,28 @@
+{
+  "name": "marks-offline-generator",
+  "version": "1.0.0",
+  "description": "Generate printable offline practice question sheets with keys and solutions from MARKS App",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "npm --prefix client install && npm --prefix client run build",
+    "server": "node server.js",
+    "client": "npm --prefix client run dev",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "marks-app",
+    "jee",
+    "neet",
+    "pdf-generator",
+    "offline-study"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}

@@ -1,0 +1,87 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+}
+
+/* ==========================================================================
+   PRINT SPECIFIC OPTIMIZATIONS — MAXIMUM PAPER UTILIZATION & ZERO WASTED SPACE
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4;
+    margin: 8mm 8mm 10mm 8mm; /* Maximizes usable printable area */
+  }
+  
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 10pt !important;
+    line-height: 1.35 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Standard page break when explicitly requested by user */
+  .page-break-before {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  /* Continuous newspaper column flow — utilizes 100% of every sheet */
+  .print-newspaper-columns {
+    column-count: 2 !important;
+    column-gap: 16px !important;
+    column-rule: 1px solid #d1d5db !important;
+    column-fill: auto !important;
+    widows: 2;
+    orphans: 2;
+  }
+
+  /* Paper saver: allows text and derivation steps to flow naturally across pages */
+  .paper-saver-item {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    display: inline-block;
+    width: 100%;
+    margin-bottom: 6px !important;
+  }
+
+  /* Prevent orphan titles alone at bottom of page */
+  .paper-saver-header {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Keep compact tables like answer key or OMR unbroken */
+  .avoid-break-strict {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* KaTeX mathematical formulas: compact margins for print */
+  .katex-display {
+    margin: 0.15em 0 !important;
+  }
+
+  .katex {
+    font-size: 0.95em;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
