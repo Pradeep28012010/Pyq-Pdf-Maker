@@ -335,7 +335,7 @@ export default function App() {
 
       // Difficulty filter
       if (difficultyFilter !== 'all') {
-        const diff = (q.difficulty || q.level || '').toLowerCase();
+        const diff = String(q.difficulty ?? q.level ?? '').toLowerCase();
         const isEasy = diff.includes('easy') || diff === '1' || (q.accuracy && q.accuracy >= 65);
         const isHard = diff.includes('hard') || diff === '3' || (q.accuracy && q.accuracy < 40);
         const isMedium = diff.includes('med') || diff === '2' || (!isEasy && !isHard);

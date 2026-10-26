@@ -29,7 +29,7 @@ export default function CategorySelector({
   );
 
   const getBucketIcon = (title = '') => {
-    const t = title.toLowerCase();
+    const t = String(title || '').toLowerCase();
     if (t.includes('must')) return <Star className="w-4 h-4 text-amber-500 fill-amber-500" />;
     if (t.includes('relevant')) return <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />;
     if (t.includes('booster')) return <Rocket className="w-4 h-4 text-purple-500" />;

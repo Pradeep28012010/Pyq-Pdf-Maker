@@ -100,7 +100,7 @@ export default function QuestionList({
           const paperTitle = q.previousYearPapers?.[0]?.title || '';
           
           // Difficulty badge
-          const diff = (q.difficulty || q.level || '').toLowerCase();
+          const diff = String(q.difficulty ?? q.level ?? '').toLowerCase();
           const isEasy = diff.includes('easy') || diff === '1';
           const isHard = diff.includes('hard') || diff === '3';
           const isMedium = diff.includes('med') || diff === '2';
