@@ -86,7 +86,7 @@ function preprocessMarksContent(rawStr) {
 
   // 3. Handle cases where a single $...$ improperly wraps across HTML breaks
   // e.g. "$ MATH1 <br/> TEXT <br/> MATH2 $"
-  content = content.replace(/\$([^\$]+?)\$/g, (match, inner) => {
+  content = content.replace(/\$([^$]+?)\$/g, (match, inner) => {
     if (inner.includes('<br/>')) {
       const parts = inner.split(/<br\/>/g);
       return parts.map(part => {
@@ -98,7 +98,7 @@ function preprocessMarksContent(rawStr) {
           return `$$${p}$$`;
         }
         // Plain text sentence (no backslashes and no math operators)
-        if (!p.includes('\\') && !/[=_\^]/.test(p)) {
+        if (!p.includes('\\') && !/[=_^]/.test(p)) {
           return p;
         }
         // Leading sentence words like "Let P(1,2)" or "Where x = 1"
@@ -152,7 +152,7 @@ export function renderMathContent(rawInput) {
 
     // Tokenize string by math delimiters
     const tokens = [];
-    const regex = /(\$\$[\s\S]*?\$\$|\$([^\$]+?)\$|\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\})/g;
+    const regex = /(\$\$[\s\S]*?\$\$|\$([^$]+?)\$|\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\})/g;
     let lastIndex = 0;
     let match;
 
@@ -217,7 +217,7 @@ export function renderMathContent(rawInput) {
                   dangerouslySetInnerHTML={{ __html: html }}
                 />
               );
-            } catch (e) {
+            } catch {
               return <span key={idx} className="font-mono text-xs">{token.value}</span>;
             }
           }

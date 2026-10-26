@@ -3,14 +3,14 @@
  * containing the complete worksheet, KaTeX styling, answer keys, and solutions.
  */
 export function downloadOfflineHtml({
-  questions = [],
+  _questions = [],
   exam,
-  subject,
+  _subject,
   chapter,
   bucket,
-  options
+  _options
 }) {
-  const printableArea = document.getElementById('printable-area');
+  const printableArea = document.getElementById('printable-area') || document.getElementById('printable-area-preview');
   if (!printableArea) return;
 
   const htmlContent = printableArea.innerHTML;

@@ -2,7 +2,10 @@ import React, { useMemo } from 'react';
 import MathView from '../utils/mathRenderer';
 import PrintableOMR from './PrintableOMR';
 
+const CURRENT_DATE_STRING = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
 export default function PrintableDocument({
+  id = 'printable-area',
   questions = [],
   exam,
   subject,
@@ -10,10 +13,13 @@ export default function PrintableDocument({
   bucket,
   options = {}
 }) {
-  if (!questions || !Array.isArray(questions) || questions.length === 0) return null;
-
+  const formattedDate = CURRENT_DATE_STRING;
   // Group MCQs into Section A and Numericals into Section B if both are present
   const { orderedQuestions, firstNumericalIndex, hasBothSections } = useMemo(() => {
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return { orderedQuestions: [], firstNumericalIndex: -1, hasBothSections: false };
+    }
+
     const hasMcq = questions.some(q => q.type !== 'numerical');
     const hasNum = questions.some(q => q.type === 'numerical');
     const both = hasMcq && hasNum;
@@ -30,6 +36,8 @@ export default function PrintableDocument({
       hasBothSections: true
     };
   }, [questions]);
+
+  if (!questions || !Array.isArray(questions) || questions.length === 0) return null;
 
   // Determine correct answer letter/text for each question
   const getAnswerText = (q) => {
@@ -67,7 +75,7 @@ export default function PrintableDocument({
     : 'mt-4 pt-3 border-t-2 border-black';
 
   return (
-    <div id="printable-area" className={`printable-document bg-white text-gray-900 mx-auto max-w-4xl p-6 md:p-8 print:p-0 print:max-w-none ${fontClass}`}>
+    <div id={id} className={`printable-document bg-white text-gray-900 mx-auto max-w-4xl p-6 md:p-8 print:p-0 print:max-w-none ${fontClass}`}>
       {/* -------------------- PART 1: QUESTIONS -------------------- */}
       {options.includeQuestions && (
         <section className="questions-section">
@@ -93,7 +101,7 @@ export default function PrintableDocument({
 
               <div className="text-right text-[10px] text-gray-700 shrink-0 border-l border-gray-300 pl-3 hidden sm:block">
                 <div className="font-bold text-black text-xs font-mono">CODE: MARKS-OFFLINE</div>
-                <div>Date: {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                <div>Date: {formattedDate}</div>
                 <div className="text-[9px] text-emerald-700 font-bold">2-Col Paper-Saver Flow</div>
               </div>
             </div>
