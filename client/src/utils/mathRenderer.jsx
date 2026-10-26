@@ -29,14 +29,17 @@ function sanitizeFormula(rawFormula) {
   if (!rawFormula) return '';
   let f = String(rawFormula).trim();
 
-  // 1. Strip all HTML tags from inside math mode (e.g. <br/>, <br>, <span>) so KaTeX never prints '< br/ >'
-  f = f.replace(/<\s*br\s*\/?\s*>/gi, ' ');
-  f = f.replace(/<[^>]+>/g, '');
+  // 1. Convert breaks inside math mode to LaTeX newlines or spaces (never print '< br/ >')
+  f = f.replace(/<\s*br\s*\/?\s*>/gi, '\\\\ ');
+  f = f.replace(/&lt;\s*br\s*\/?\s*&gt;/gi, '\\\\ ');
 
-  // 2. Strip all unescaped dollar signs from inside math mode (prevents "Can't use function '$' in math mode")
+  // 2. Strip only known HTML tags, NEVER mathematical inequalities like '< 4' or '> 0'!
+  f = f.replace(/<\/?(span|p|div|b|i|u|strong|em|font|table|tr|td|th|tbody|thead|sup|sub|center|h[1-6]|ul|ol|li)[^>]*>/gi, '');
+
+  // 3. Strip all unescaped dollar signs from inside math mode
   f = f.replace(/(?<!\\)\$/g, '');
 
-  // 3. Decode HTML entities that may have leaked into math mode
+  // 4. Decode HTML entities that may have leaked into math mode
   f = f.replace(/&amp;/g, '&')
        .replace(/&lt;/g, '<')
        .replace(/&gt;/g, '>')
@@ -44,20 +47,34 @@ function sanitizeFormula(rawFormula) {
        .replace(/&#39;/g, "'")
        .replace(/&nbsp;/g, ' ');
 
-  // 4. Fix common MARKS App database quirks
+  // 5. Fix common MARKS App database quirks
   f = f.replace(/\\mathrm\{~([a-zA-Z0-9]+)\}/g, '\\mathrm{$1}');
 
-  // 5. Fix unescaped percentage signs (in LaTeX % is a comment that truncates formulas!)
+  // 6. Fix unescaped percentage signs
   f = f.replace(/(?<!\\)%/g, '\\%');
 
-  // 6. Balance unclosed braces if any
+  // 7. Balance mismatched \left and \right delimiters (prevents KaTeX ParseError: \right without \left)
+  const leftMatches = (f.match(/\\left(?=[^a-zA-Z]|$)/g) || []).length;
+  const rightMatches = (f.match(/\\right(?=[^a-zA-Z]|$)/g) || []).length;
+  if (rightMatches > leftMatches) {
+    f = '\\left.' + f;
+  } else if (leftMatches > rightMatches) {
+    f = f + '\\right.';
+  }
+
+  // 8. Balance unclosed braces
   const openBraces = (f.match(/\{/g) || []).length;
   const closeBraces = (f.match(/\}/g) || []).length;
   if (openBraces > closeBraces) {
     f = f + '}'.repeat(openBraces - closeBraces);
+  } else if (closeBraces > openBraces) {
+    for (let i = 0; i < (closeBraces - openBraces); i++) {
+      const lastIdx = f.lastIndexOf('}');
+      if (lastIdx !== -1) f = f.slice(0, lastIdx) + f.slice(lastIdx + 1);
+    }
   }
 
-  // 7. Balance unclosed environments
+  // 9. Balance unclosed environments
   const envs = ['aligned', 'align', 'matrix', 'pmatrix', 'bmatrix', 'cases', 'array', 'gather', 'equation'];
   for (const env of envs) {
     const beginCount = (f.match(new RegExp(`\\\\begin\\{${env}\\*?\\}`, 'g')) || []).length;
@@ -86,12 +103,10 @@ function preprocessMarksContent(rawStr) {
   content = content.replace(/&nbsp;/gi, ' ');
 
   // 2. Standardize LaTeX delimiters \( ... \) -> $ ... $ and \[ ... \] -> $$ ... $$
-  // Using function callbacks to avoid JavaScript string replacement bugs with $
   content = content.replace(/\\\[([\s\S]*?)\\\]/g, (_m, g) => `$$${g}$$`);
   content = content.replace(/\\\(([\s\S]*?)\\\)/g, (_m, g) => `$${g}$`);
 
   // 3. Handle cases where $...$ or $$...$$ improperly wraps across HTML <br/> breaks
-  // e.g. "$ MATH1 <br/> TEXT <br/> MATH2 $"
   content = content.replace(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$)/g, (match) => {
     const isBlock = match.startsWith('$$');
     const inner = isBlock ? match.slice(2, -2) : match.slice(1, -1);
@@ -126,23 +141,34 @@ function preprocessMarksContent(rawStr) {
     return match;
   });
 
-  // 4. Wrap naked LaTeX math commands that are outside of $ delimiters
-  const segments = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$)/g);
+  // 4. Wrap naked LaTeX math in non-delimited segments
+  // Split strictly by existing $ delimiters AND <br/> tags so HTML tags are NEVER mangled!
+  const segments = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$|<br\/>)/g);
   for (let i = 0; i < segments.length; i++) {
-    if (!segments[i].startsWith('$')) {
-      // Naked math commands: \lambda, \alpha, \sqrt{2}, etc.
-      segments[i] = segments[i].replace(/\\(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|sqrt|frac|pm|mp|times|div|le|ge|ne|approx|equiv|partial|nabla|infty|int|sum|prod|cup|cap|subset|subseteq|in|notin|to|rightarrow|leftarrow|leftrightarrow|dots|cdots|ldots|cdot|circ|degree)\b(?:\s*\{[^}]*\})?/g, (m) => `$${m}$`);
-      // Naked pure equation lines
-      segments[i] = segments[i].replace(/((?:[a-zA-Z0-9_\{\}\^:]+\s*[:=]\s*)?[^<$\n]*(?:\\sqrt|\\frac|\\text|\^|_)[^<$\n]*)/g, (match) => {
-        const textStripped = match.replace(/\\text\s*\{[^}]*\}/g, '');
-        const words = textStripped.match(/[a-zA-Z]{3,}/g) || [];
-        const mathKeywords = new Set(['sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'ln', 'lim', 'max', 'min', 'det', 'exp', 'deg', 'dim', 'ker', 'gcd', 'lcm', 'sqrt', 'frac', 'mathrm', 'mathbf', 'mathit', 'mathbb', 'mathcal', 'right', 'left', 'begin', 'aligned', 'matrix', 'cases']);
-        const proseWords = words.filter(w => !mathKeywords.has(w.toLowerCase()));
-        if (proseWords.length === 0 && match.trim().length > 3) {
-          return `$$${match.trim()}$$`;
-        }
-        return match;
-      });
+    const seg = segments[i];
+    if (!seg || seg.startsWith('$') || seg === '<br/>') continue;
+
+    // Check if segment contains LaTeX math commands (e.g. \sqrt, \frac, \mathbb, \left, \right)
+    if (/\\[a-zA-Z]+/.test(seg)) {
+      const textStripped = seg.replace(/\\text\s*\{[^}]*\}/g, '');
+      const words = textStripped.match(/[a-zA-Z]{3,}/g) || [];
+      const mathKeywords = new Set([
+        'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'ln', 'lim', 'max', 'min', 'det',
+        'exp', 'deg', 'dim', 'ker', 'gcd', 'lcm', 'sqrt', 'frac', 'mathrm', 'mathbf', 'mathit',
+        'mathbb', 'mathcal', 'right', 'left', 'begin', 'aligned', 'matrix', 'cases', 'theta',
+        'alpha', 'beta', 'lambda', 'omega', 'phi', 'psi', 'rho', 'sigma', 'tau', 'mu', 'nu',
+        'pi', 'eta', 'zeta', 'delta', 'gamma'
+      ]);
+      const proseWords = words.filter(w => !mathKeywords.has(w.toLowerCase()));
+
+      if (proseWords.length <= 1 && seg.trim().length > 3) {
+        // Pure equation segment: wrap safely in $$
+        segments[i] = `$$${seg.trim()}$$`;
+      } else {
+        // Mixed prose and math: wrap set definitions like S_1 = \{ ... \} and Greek/math symbols
+        segments[i] = seg.replace(/([a-zA-Z0-9_\{\}\^:]+\s*=\s*\\(?:left)?\\?\{[^$]+?\\(?:right)?\\?\})/g, '$$$1$$')
+                         .replace(/\\(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|sqrt|frac|pm|mp|times|div|le|ge|ne|approx|equiv|partial|nabla|infty|int|sum|prod|cup|cap|subset|subseteq|notin|to|rightarrow|leftarrow|leftrightarrow|dots|cdots|ldots|cdot|circ|degree)\b(?:\s*\{[^}]*\})?/g, (m) => `$${m}$`);
+      }
     }
   }
   content = segments.join('');
