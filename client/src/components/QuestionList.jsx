@@ -10,14 +10,19 @@ import {
   Hash, 
   Award,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Star,
+  Zap,
+  Target
 } from 'lucide-react';
 import MathView from '../utils/mathRenderer';
 
 export default function QuestionList({
   questions = [],
   selectedIds = new Set(),
+  starredIds = new Set(),
   onToggleSelect,
+  onToggleStar,
   onSelectAll,
   onDeselectAll,
   loading
@@ -39,7 +44,7 @@ export default function QuestionList({
       <div className="no-print bg-white rounded-2xl p-10 border border-gray-200/80 text-center space-y-2">
         <Layers className="w-8 h-8 text-gray-300 mx-auto" />
         <h4 className="text-sm font-semibold text-gray-700">No questions match your filters</h4>
-        <p className="text-xs text-gray-400">Try adjusting your search keyword or question type filter above.</p>
+        <p className="text-xs text-gray-400">Try adjusting your search keyword, question type, or difficulty filter above.</p>
       </div>
     );
   }
@@ -57,6 +62,12 @@ export default function QuestionList({
           <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-100">
             {selectedIds.size} Selected for PDF
           </span>
+          {starredIds.size > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200 flex items-center gap-1">
+              <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+              {starredIds.size} Starred
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -79,13 +90,20 @@ export default function QuestionList({
       </div>
 
       {/* Questions list */}
-      <div className="space-y-2.5 max-h-[550px] overflow-y-auto pr-1 scrollbar-thin">
+      <div className="space-y-2.5 max-h-[580px] overflow-y-auto pr-1 scrollbar-thin">
         {questions.map((q, idx) => {
           if (!q) return null;
           const qId = q._id || q.id || String(idx);
           const isSelected = selectedIds.has(qId);
+          const isStarred = starredIds.has(qId);
           const isExpanded = expandedId === qId;
           const paperTitle = q.previousYearPapers?.[0]?.title || '';
+          
+          // Difficulty badge
+          const diff = (q.difficulty || q.level || '').toLowerCase();
+          const isEasy = diff.includes('easy') || diff === '1';
+          const isHard = diff.includes('hard') || diff === '3';
+          const isMedium = diff.includes('med') || diff === '2';
 
           return (
             <div
@@ -114,7 +132,7 @@ export default function QuestionList({
                   </div>
 
                   {/* Badges */}
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-extrabold text-xs text-indigo-950 bg-indigo-100/80 px-2 py-0.5 rounded">
                       Q.{idx + 1}
                     </span>
@@ -126,11 +144,53 @@ export default function QuestionList({
                     <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">
                       {q.type === 'numerical' ? '🔢 Numerical' : q.type === 'multipleCorrect' ? '☑️ Multi-Correct' : '🔘 MCQ'}
                     </span>
+
+                    {/* Difficulty Badge if available */}
+                    {isEasy && (
+                      <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                        🟢 Easy
+                      </span>
+                    )}
+                    {isMedium && (
+                      <span className="text-[9px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                        🟡 Medium
+                      </span>
+                    )}
+                    {isHard && (
+                      <span className="text-[9px] font-bold text-rose-800 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
+                        🔴 Hard
+                      </span>
+                    )}
+
+                    {/* Accuracy rate if provided */}
+                    {q.accuracy !== undefined && (
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded">
+                        🎯 {q.accuracy}% Acc
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* Actions: View Solution toggle */}
-                <div className="flex items-center gap-1 shrink-0">
+                {/* Actions: Star toggle + View Solution toggle */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Star / Bookmark Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleStar(qId);
+                    }}
+                    title={isStarred ? 'Remove from Starred' : 'Star for Revision'}
+                    className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                      isStarred
+                        ? 'bg-amber-50 border-amber-300 text-amber-600'
+                        : 'border-gray-200 text-gray-400 hover:text-amber-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Star className={`w-3.5 h-3.5 ${isStarred ? 'fill-amber-500 text-amber-500' : ''}`} />
+                  </button>
+
+                  {/* Solution Toggle */}
                   <button
                     type="button"
                     onClick={() => setExpandedId(isExpanded ? null : qId)}
@@ -150,7 +210,7 @@ export default function QuestionList({
               {/* Rendered Math & Text Statement */}
               <div 
                 onClick={() => onToggleSelect(qId)}
-                className="text-xs text-gray-900 pl-8 cursor-pointer select-text"
+                className="text-xs text-gray-900 pl-8 cursor-pointer select-text leading-relaxed"
               >
                 <MathView content={q.question || q.statement || q.text || ''} />
               </div>
@@ -179,23 +239,32 @@ export default function QuestionList({
 
               {/* Expanded Solution Drawer */}
               {isExpanded && (
-                <div className="ml-8 mt-2 p-3 bg-purple-50/60 border border-purple-200/80 rounded-xl space-y-2 text-xs animate-in fade-in duration-150">
-                  <div className="flex items-center justify-between font-bold text-purple-900 text-[11px]">
-                    <span>Step-by-Step Verified Solution:</span>
-                    {q.type === 'numerical' ? (
-                      <span>Correct Value: {q.correctValue || 'N/A'}</span>
-                    ) : (
-                      <span>Answer: Option {q.options?.findIndex(o => o.isCorrect) >= 0 ? String.fromCharCode(65 + q.options.findIndex(o => o.isCorrect)) : 'Refer Solution'}</span>
-                    )}
+                <div className="mt-2 pl-8 pt-3 border-t border-purple-100 space-y-2 text-xs">
+                  {/* Verified Answer Badge */}
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-[11px] text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                      Answer: {q.type === 'numerical' ? (q.correctValue ?? 'See Solution') : (
+                        Array.isArray(q.options)
+                          ? q.options.map((o, i) => o?.isCorrect ? String.fromCharCode(65 + i) : null).filter(Boolean).join(', ') || 'N/A'
+                          : 'N/A'
+                      )}
+                    </span>
                   </div>
+
+                  {/* Hint if present */}
                   {q.hint && (
-                    <div className="p-1.5 bg-white/80 rounded border border-purple-100 text-[11px] text-purple-800">
-                      <strong>Hint / Concept: </strong>
+                    <div className="p-2 bg-amber-50/80 border border-amber-200 rounded-lg text-amber-900 text-[11px] leading-snug">
+                      <strong>Concept / Hint: </strong>
                       <MathView content={q.hint} className="inline" />
                     </div>
                   )}
-                  <div className="text-gray-800 leading-relaxed bg-white p-2.5 rounded-lg border border-purple-100">
-                    <MathView content={q.solution || 'No solution available'} />
+
+                  {/* Full Solution */}
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">
+                      Detailed Derivation:
+                    </span>
+                    <MathView content={q.solution || 'No detailed solution available for this question.'} />
                   </div>
                 </div>
               )}

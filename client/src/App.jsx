@@ -52,6 +52,38 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'singleCorrect' | 'numerical'
   const [yearFilter, setYearFilter] = useState('all');
+  const [difficultyFilter, setDifficultyFilter] = useState('all'); // 'all' | 'easy' | 'medium' | 'hard'
+  const [sessionFilter, setSessionFilter] = useState('all'); // 'all' | 'jan' | 'apr'
+  const [onlyStarred, setOnlyStarred] = useState(false);
+
+  // Multi-chapter bundling
+  const [isMultiChapter, setIsMultiChapter] = useState(false);
+  const [selectedChapterIds, setSelectedChapterIds] = useState(new Set());
+
+  // Starred questions persistence in localStorage
+  const [starredQuestionIds, setStarredQuestionIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('marks_starred_questions');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch (e) {
+      return new Set();
+    }
+  });
+
+  const handleToggleStar = (id) => {
+    setStarredQuestionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      try {
+        localStorage.setItem('marks_starred_questions', JSON.stringify([...next]));
+      } catch (e) {}
+      return next;
+    });
+  };
 
   // Print options
   const [printOptions, setPrintOptions] = useState({
@@ -287,6 +319,13 @@ export default function App() {
   // Compute filtered questions
   const filteredQuestions = useMemo(() => {
     return allQuestions.filter(q => {
+      const qId = q._id || q.id;
+
+      // Starred filter
+      if (onlyStarred && !starredQuestionIds.has(qId)) {
+        return false;
+      }
+
       // Type filter
       if (typeFilter !== 'all') {
         if (typeFilter === 'numerical' && q.type !== 'numerical') return false;
@@ -294,10 +333,29 @@ export default function App() {
         if (typeFilter === 'multipleCorrect' && q.type !== 'multipleCorrect') return false;
       }
 
+      // Difficulty filter
+      if (difficultyFilter !== 'all') {
+        const diff = (q.difficulty || q.level || '').toLowerCase();
+        const isEasy = diff.includes('easy') || diff === '1' || (q.accuracy && q.accuracy >= 65);
+        const isHard = diff.includes('hard') || diff === '3' || (q.accuracy && q.accuracy < 40);
+        const isMedium = diff.includes('med') || diff === '2' || (!isEasy && !isHard);
+
+        if (difficultyFilter === 'easy' && !isEasy) return false;
+        if (difficultyFilter === 'medium' && !isMedium) return false;
+        if (difficultyFilter === 'hard' && !isHard) return false;
+      }
+
       // Year filter
       if (yearFilter !== 'all') {
         const title = q.previousYearPapers?.[0]?.title || '';
         if (!title.includes(yearFilter)) return false;
+      }
+
+      // Session filter (Jan vs Apr shift)
+      if (sessionFilter !== 'all') {
+        const title = (q.previousYearPapers?.[0]?.title || '').toLowerCase();
+        if (sessionFilter === 'jan' && !title.includes('jan')) return false;
+        if (sessionFilter === 'apr' && !title.includes('apr')) return false;
       }
 
       // Search term
@@ -313,7 +371,7 @@ export default function App() {
 
       return true;
     });
-  }, [allQuestions, typeFilter, yearFilter, searchTerm]);
+  }, [allQuestions, typeFilter, yearFilter, searchTerm, difficultyFilter, sessionFilter, onlyStarred, starredQuestionIds]);
 
   // Handlers for exam/subject/chapter/bucket
   const handleSelectExam = (exam) => {
@@ -359,9 +417,76 @@ export default function App() {
     setSelectedQuestionIds(new Set());
   };
 
+  // Multi-chapter bundle handlers
+  const handleToggleMultiChapterMode = () => {
+    setIsMultiChapter(prev => {
+      const nextVal = !prev;
+      if (nextVal && selectedChapter) {
+        setSelectedChapterIds(new Set([selectedChapter.id]));
+      } else {
+        setSelectedChapterIds(new Set());
+      }
+      return nextVal;
+    });
+  };
+
+  const handleToggleChapterInBundle = async (ch) => {
+    const next = new Set(selectedChapterIds);
+    if (next.has(ch.id)) {
+      next.delete(ch.id);
+    } else {
+      next.add(ch.id);
+    }
+    setSelectedChapterIds(next);
+
+    // If demo mode
+    if (isDemo && demoDataStore) {
+      const qs = demoDataStore.questions?.[selectedBucket?.id || 'bucket-1'] || [];
+      setAllQuestions(qs);
+      setSelectedQuestionIds(new Set(qs.map(q => q._id)));
+      return;
+    }
+
+    // Live mode: fetch questions across selected chapters
+    if (selectedExam && selectedSubject && selectedBucket && next.size > 0) {
+      setLoadingQuestions(true);
+      try {
+        let combined = [];
+        for (const chId of next) {
+          const res = await api.getBucketQuestions(selectedExam.id, selectedSubject.id, chId, selectedBucket.id);
+          if (res.success && res.questions) {
+            combined.push(...res.questions);
+          }
+        }
+        // Deduplicate
+        const uniqueMap = new Map();
+        combined.forEach(q => {
+          const id = q._id || q.id;
+          if (id && !uniqueMap.has(id)) uniqueMap.set(id, q);
+        });
+        const uniqueList = Array.from(uniqueMap.values());
+        setAllQuestions(uniqueList);
+        setSelectedQuestionIds(new Set(uniqueList.map(q => q._id || q.id)));
+      } catch (e) {
+        console.error('Failed to bundle chapters:', e);
+      } finally {
+        setLoadingQuestions(false);
+      }
+    }
+  };
+
   // Quick preset selections
   const handleQuickSelect = (preset) => {
-    if (typeof preset === 'number') {
+    if (preset === 'nta-pattern') {
+      // Pick up to 20 MCQs and up to 5 Numerical Qs as per official NTA JEE Main pattern
+      const mcqs = filteredQuestions.filter(q => q.type !== 'numerical').slice(0, 20);
+      const nums = filteredQuestions.filter(q => q.type === 'numerical').slice(0, 5);
+      const combined = [...mcqs, ...nums];
+      setSelectedQuestionIds(new Set(combined.map(q => q._id || q.id)));
+    } else if (preset === 'starred') {
+      const starredSubset = filteredQuestions.filter(q => starredQuestionIds.has(q._id || q.id));
+      setSelectedQuestionIds(new Set(starredSubset.map(q => q._id || q.id)));
+    } else if (typeof preset === 'number') {
       const subset = filteredQuestions.slice(0, preset);
       setSelectedQuestionIds(new Set(subset.map(q => q._id || q.id)));
     } else if (preset === '2024') {
@@ -373,6 +498,18 @@ export default function App() {
       setSelectedQuestionIds(new Set(subset.map(q => q._id || q.id)));
       setTypeFilter('numerical');
     }
+  };
+
+  // Shuffle questions order for realistic exam drill
+  const handleShuffle = () => {
+    setAllQuestions(prev => {
+      const shuffled = [...prev];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    });
   };
 
   const handlePrint = () => {
@@ -484,6 +621,10 @@ export default function App() {
           onSelectSubject={handleSelectSubject}
           onSelectChapter={handleSelectChapter}
           onSelectBucket={handleSelectBucket}
+          selectedChapterIds={selectedChapterIds}
+          onToggleChapterInBundle={handleToggleChapterInBundle}
+          isMultiChapter={isMultiChapter}
+          onToggleMultiChapterMode={handleToggleMultiChapterMode}
           loadingSubjects={loadingSubjects}
           loadingChapters={loadingChapters}
           loadingBuckets={loadingBuckets}
@@ -507,11 +648,19 @@ export default function App() {
             yearFilter={yearFilter}
             onYearFilterChange={setYearFilter}
             availableYears={availableYears}
+            difficultyFilter={difficultyFilter}
+            onDifficultyFilterChange={setDifficultyFilter}
+            sessionFilter={sessionFilter}
+            onSessionFilterChange={setSessionFilter}
+            onlyStarred={onlyStarred}
+            onToggleStarredOnly={() => setOnlyStarred(!onlyStarred)}
+            starredCount={starredQuestionIds.size}
             totalCount={allQuestions.length}
             selectedCount={selectedQuestionIds.size}
             onSelectAll={handleSelectAll}
             onDeselectAll={handleDeselectAll}
             onQuickSelect={handleQuickSelect}
+            onShuffle={handleShuffle}
           />
         )}
 
@@ -519,7 +668,9 @@ export default function App() {
         <QuestionList
           questions={filteredQuestions}
           selectedIds={selectedQuestionIds}
+          starredIds={starredQuestionIds}
           onToggleSelect={handleToggleQuestion}
+          onToggleStar={handleToggleStar}
           onSelectAll={handleSelectAll}
           onDeselectAll={handleDeselectAll}
           loading={loadingQuestions}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Star, Flame, Rocket, BookOpen, Search, Check, ChevronDown, Layers, X } from 'lucide-react';
+import { Star, Flame, Rocket, BookOpen, Search, Check, ChevronDown, Layers, X, PlusCircle, CheckSquare, Square } from 'lucide-react';
 
 export default function CategorySelector({
   exams = [],
@@ -14,6 +14,10 @@ export default function CategorySelector({
   onSelectSubject,
   onSelectChapter,
   onSelectBucket,
+  selectedChapterIds = new Set(),
+  onToggleChapterInBundle,
+  isMultiChapter = false,
+  onToggleMultiChapterMode,
   loadingSubjects,
   loadingChapters,
   loadingBuckets
@@ -29,7 +33,9 @@ export default function CategorySelector({
     if (t.includes('must')) return <Star className="w-4 h-4 text-amber-500 fill-amber-500" />;
     if (t.includes('relevant')) return <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />;
     if (t.includes('booster')) return <Rocket className="w-4 h-4 text-purple-500" />;
-    return <BookOpen className="w-4 h-4 text-blue-500" />;
+    if (t.includes('advanced')) return <Rocket className="w-4 h-4 text-rose-500" />;
+    if (t.includes('numerical')) return <Star className="w-4 h-4 text-blue-500" />;
+    return <BookOpen className="w-4 h-4 text-indigo-500" />;
   };
 
   return (
@@ -48,14 +54,14 @@ export default function CategorySelector({
                 <button
                   key={exam.id}
                   onClick={() => onSelectExam(exam)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 border ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 border cursor-pointer ${
                     active
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-200'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-200 font-bold'
                       : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                   }`}
                 >
                   {exam.title}
-                  {active && <Check className="w-3.5 h-3.5" />}
+                  {active && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                 </button>
               );
             })}
@@ -80,14 +86,14 @@ export default function CategorySelector({
                   <button
                     key={sub.id}
                     onClick={() => onSelectSubject(sub)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 border ${
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 border cursor-pointer ${
                       active
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-200'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-200 font-bold'
                         : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                     }`}
                   >
                     {sub.title}
-                    {active && <Check className="w-3.5 h-3.5" />}
+                    {active && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </button>
                 );
               })
@@ -100,15 +106,34 @@ export default function CategorySelector({
 
       {/* Step 2: Chapter Selection */}
       <div className="border-t border-gray-100 pt-4">
-        <div className="flex items-center justify-between mb-2.5">
-          <label className="text-xs font-bold uppercase tracking-wider text-gray-500">
-            3. Select Chapter {chapters.length > 0 && `(${filteredChapters.length} of ${chapters.length})`}
-          </label>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold uppercase tracking-wider text-gray-500">
+              3. Select Chapter {chapters.length > 0 && `(${filteredChapters.length} of ${chapters.length})`}
+            </label>
+
+            {/* Multi-Chapter Mode Toggle */}
+            {onToggleMultiChapterMode && chapters.length > 0 && (
+              <button
+                type="button"
+                onClick={onToggleMultiChapterMode}
+                className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border transition flex items-center gap-1 cursor-pointer ${
+                  isMultiChapter
+                    ? 'bg-purple-100 border-purple-300 text-purple-900'
+                    : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <PlusCircle className="w-3 h-3 text-purple-600" />
+                <span>{isMultiChapter ? 'Multi-Unit Bundle (Active)' : 'Combine Multiple Chapters'}</span>
+              </button>
+            )}
+          </div>
+
           <div className="relative w-48 sm:w-72">
             <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search chapters (e.g. straight lines)..."
+              placeholder="Search chapters (e.g. straight lines, thermodynamics)..."
               value={chapterSearch}
               onChange={(e) => setChapterSearch(e.target.value)}
               className="w-full pl-8 pr-7 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -132,21 +157,30 @@ export default function CategorySelector({
         ) : filteredChapters.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-60 overflow-y-auto pr-1 scrollbar-thin">
             {filteredChapters.map(ch => {
-              const active = selectedChapter?.id === ch.id;
+              const active = isMultiChapter
+                ? selectedChapterIds.has(ch.id)
+                : selectedChapter?.id === ch.id;
+
               return (
                 <button
                   key={ch.id}
-                  onClick={() => onSelectChapter(ch)}
-                  className={`p-2.5 rounded-xl text-left border transition flex flex-col justify-between ${
+                  onClick={() => {
+                    if (isMultiChapter && onToggleChapterInBundle) {
+                      onToggleChapterInBundle(ch);
+                    } else {
+                      onSelectChapter(ch);
+                    }
+                  }}
+                  className={`p-2.5 rounded-xl text-left border transition flex flex-col justify-between cursor-pointer ${
                     active
-                      ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500 text-indigo-950 font-semibold'
+                      ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500 text-indigo-950 font-semibold shadow-2xs'
                       : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700'
                   }`}
                 >
                   <div className="text-xs leading-snug line-clamp-2">{ch.title}</div>
                   <div className="flex items-center justify-between mt-1 text-[10px] text-gray-400">
                     <span>{ch.totalQuestions ? `${ch.totalQuestions} Qs` : ''}</span>
-                    {active && <Check className="w-3 h-3 text-indigo-600" />}
+                    {active && <Check className="w-3 h-3 text-indigo-600 stroke-[3]" />}
                   </div>
                 </button>
               );
@@ -187,9 +221,9 @@ export default function CategorySelector({
                 <button
                   key={b.id}
                   onClick={() => onSelectBucket(b)}
-                  className={`p-3 rounded-xl border text-left transition flex items-center gap-3 relative ${
+                  className={`p-3 rounded-xl border text-left transition flex items-center gap-3 relative cursor-pointer ${
                     active
-                      ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-indigo-500 shadow-sm'
+                      ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-indigo-500 shadow-sm ring-1 ring-indigo-500'
                       : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50/50'
                   }`}
                 >

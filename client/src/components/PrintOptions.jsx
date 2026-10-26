@@ -10,7 +10,10 @@ import {
   Award, 
   FileCheck2, 
   Sparkles,
-  Leaf
+  Leaf,
+  Target,
+  FileSpreadsheet,
+  Bookmark
 } from 'lucide-react';
 
 export default function PrintOptions({ options, onChange, totalQuestions, selectedCount }) {
@@ -28,7 +31,7 @@ export default function PrintOptions({ options, onChange, totalQuestions, select
           </div>
           <div>
             <h3 className="text-sm font-bold text-gray-900">Worksheet & Print Customizer</h3>
-            <p className="text-[11px] text-gray-500">Fine-tune paper density, layout, answer key and solutions</p>
+            <p className="text-[11px] text-gray-500">Fine-tune paper density, NTA layout, answer key and self-evaluation</p>
           </div>
         </div>
         
@@ -53,11 +56,11 @@ export default function PrintOptions({ options, onChange, totalQuestions, select
               onClick={() => update('layout', '2-column')}
               className={`p-2 rounded-xl border text-xs font-semibold text-center transition cursor-pointer ${
                 options.layout === '2-column'
-                  ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-1 ring-indigo-500'
+                  ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-1 ring-indigo-500 font-bold'
                   : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
               }`}
             >
-              <div className="font-bold flex items-center justify-center gap-1">
+              <div className="flex items-center justify-center gap-1">
                 <Columns className="w-3 h-3" /> 2-Column
               </div>
               <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">Saves 50% Paper</span>
@@ -68,11 +71,11 @@ export default function PrintOptions({ options, onChange, totalQuestions, select
               onClick={() => update('layout', '1-column')}
               className={`p-2 rounded-xl border text-xs font-semibold text-center transition cursor-pointer ${
                 options.layout === '1-column'
-                  ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-1 ring-indigo-500'
+                  ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-1 ring-indigo-500 font-bold'
                   : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
               }`}
             >
-              <div className="font-bold flex items-center justify-center gap-1">
+              <div className="flex items-center justify-center gap-1">
                 <AlignJustify className="w-3 h-3" /> 1-Column
               </div>
               <span className="text-[10px] text-gray-400 block mt-0.5">Spacious</span>
@@ -88,7 +91,7 @@ export default function PrintOptions({ options, onChange, totalQuestions, select
           </label>
           <div className="grid grid-cols-3 gap-1.5">
             {[
-              { id: 'compact', label: 'Compact', sub: '9pt' },
+              { id: 'compact', label: 'Compact', sub: '9.5pt' },
               { id: 'normal', label: 'Normal', sub: '11pt' },
               { id: 'large', label: 'Large', sub: '12.5pt' }
             ].map(f => (
@@ -187,7 +190,7 @@ export default function PrintOptions({ options, onChange, totalQuestions, select
         </div>
       </div>
 
-      {/* Advanced Custom Headers (Timer, Student, Batch, Marking Scheme) */}
+      {/* Advanced Custom Headers (Timer, Student, Batch, Marking Scheme, Scorecard) */}
       <div className="border-t border-gray-100 pt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <div>
           <label className="block text-[11px] font-bold text-gray-600 mb-1">
@@ -195,7 +198,7 @@ export default function PrintOptions({ options, onChange, totalQuestions, select
           </label>
           <input
             type="text"
-            value={options.studentName}
+            value={options.studentName || ''}
             onChange={(e) => update('studentName', e.target.value)}
             placeholder="e.g. Pradeep"
             className="w-full px-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-indigo-500 outline-none"
@@ -207,7 +210,7 @@ export default function PrintOptions({ options, onChange, totalQuestions, select
           </label>
           <input
             type="text"
-            value={options.instituteName}
+            value={options.instituteName || ''}
             onChange={(e) => update('instituteName', e.target.value)}
             placeholder="e.g. College Self-Study Batch"
             className="w-full px-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-indigo-500 outline-none"
@@ -222,11 +225,13 @@ export default function PrintOptions({ options, onChange, totalQuestions, select
             type="text"
             value={options.timeAllowed || ''}
             onChange={(e) => update('timeAllowed', e.target.value)}
-            placeholder="e.g. 45 Mins"
+            placeholder="e.g. 60 Mins"
             className="w-full px-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-indigo-500 outline-none"
           />
         </div>
-        <div className="flex items-center pt-5">
+        
+        {/* Toggles: Shift metadata & Self-evaluation Scorecard */}
+        <div className="flex flex-col gap-1.5 justify-center pt-2">
           <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
             <input
               type="checkbox"
@@ -235,6 +240,15 @@ export default function PrintOptions({ options, onChange, totalQuestions, select
               className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
             />
             <span className="font-medium">Show PYQ Shift Tags</span>
+          </label>
+          <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={options.includeScorecard ?? true}
+              onChange={(e) => update('includeScorecard', e.target.checked)}
+              className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+            />
+            <span className="font-medium text-indigo-900 font-bold">Include Self-Scoring Card</span>
           </label>
         </div>
       </div>
