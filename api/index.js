@@ -216,16 +216,37 @@ router.get('/exam/:examId/subject/:subjectId/chapter/:chapterId/buckets', async 
       slug: b.slug
     }));
 
-    // Ensure 'All PYQs' bucket is present at the front
-    const hasAll = formattedBuckets.some(b => (b.title || '').toLowerCase().includes('all') || b.id === 'all-pyqs');
-    if (!hasAll) {
-      formattedBuckets.unshift({
-        id: 'all-pyqs',
-        title: 'All PYQs',
-        totalQuestions: data?.chapter?.totalQuestions || data?.totalQuestions || 0,
-        slug: 'all-pyqs',
-        isAll: true
-      });
+    // Standard official MARKS App bucket categories
+    const STANDARD_MARKS_BUCKETS = [
+      { id: 'all-pyqs', title: 'All PYQs', slug: 'all-pyqs', isAll: true },
+      { id: 'most-relevant', title: 'Most Relevant PYQ-based Qs', slug: 'most-relevant' },
+      { id: 'must-do', title: 'Must Do Qs of last 5 Years', slug: 'must-do' },
+      { id: 'rank-boosters', title: 'Rank Booster', slug: 'rank-boosters' },
+      { id: 'top-numerical', title: 'Top Numerical', slug: 'top-numerical' },
+      { id: 'advanced', title: 'Advanced Questions', slug: 'advanced' },
+      { id: 'beginner', title: 'Beginner Qs', slug: 'beginner' }
+    ];
+
+    // If server returned 0 or 1 bucket, guarantee the full suite of standard MARKS buckets
+    if (formattedBuckets.length <= 1) {
+      const totalQ = data?.chapter?.totalQuestions || data?.totalQuestions || 0;
+      formattedBuckets.length = 0;
+      formattedBuckets.push(...STANDARD_MARKS_BUCKETS.map(b => ({
+        ...b,
+        totalQuestions: b.id === 'all-pyqs' ? totalQ : 0
+      })));
+    } else {
+      // Ensure 'All PYQs' bucket is present at the front
+      const hasAll = formattedBuckets.some(b => (b.title || '').toLowerCase().includes('all') || b.id === 'all-pyqs');
+      if (!hasAll) {
+        formattedBuckets.unshift({
+          id: 'all-pyqs',
+          title: 'All PYQs',
+          totalQuestions: data?.chapter?.totalQuestions || data?.totalQuestions || 0,
+          slug: 'all-pyqs',
+          isAll: true
+        });
+      }
     }
 
     return res.json({
@@ -234,8 +255,21 @@ router.get('/exam/:examId/subject/:subjectId/chapter/:chapterId/buckets', async 
       buckets: formattedBuckets
     });
   } catch (err) {
-    console.error('Error fetching buckets:', err.response?.data || err.message);
-    return res.status(500).json({ success: false, error: 'Failed to fetch buckets' });
+    console.warn('Error fetching custom buckets; serving standard MARKS buckets:', err.response?.data || err.message);
+    const STANDARD_MARKS_BUCKETS = [
+      { id: 'all-pyqs', title: 'All PYQs', slug: 'all-pyqs', isAll: true },
+      { id: 'most-relevant', title: 'Most Relevant PYQ-based Qs', slug: 'most-relevant' },
+      { id: 'must-do', title: 'Must Do Qs of last 5 Years', slug: 'must-do' },
+      { id: 'rank-boosters', title: 'Rank Booster', slug: 'rank-boosters' },
+      { id: 'top-numerical', title: 'Top Numerical', slug: 'top-numerical' },
+      { id: 'advanced', title: 'Advanced Questions', slug: 'advanced' },
+      { id: 'beginner', title: 'Beginner Qs', slug: 'beginner' }
+    ];
+    return res.json({
+      success: true,
+      chapterTitle: chapterId,
+      buckets: STANDARD_MARKS_BUCKETS
+    });
   }
 });
 

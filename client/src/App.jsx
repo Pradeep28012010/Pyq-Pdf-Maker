@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Navbar from './components/Navbar';
 import CategorySelector from './components/CategorySelector';
 import QuestionFilterBar from './components/QuestionFilterBar';
@@ -42,6 +42,8 @@ export default function App() {
 
   // Questions data
   const [allQuestions, setAllQuestions] = useState([]);
+  const [chapterMasterQuestions, setChapterMasterQuestions] = useState([]); // Master copy of all chapter questions
+  const chapterMasterRef = useRef([]);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState(new Set());
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -263,34 +265,87 @@ export default function App() {
     }
   };
 
+  const STANDARD_MARKS_BUCKETS = useMemo(() => [
+    { id: 'all-pyqs', title: 'All PYQs', slug: 'all-pyqs', isAll: true },
+    { id: 'most-relevant', title: 'Most Relevant PYQ-based Qs', slug: 'most-relevant' },
+    { id: 'must-do', title: 'Must Do Qs of last 5 Years', slug: 'must-do' },
+    { id: 'rank-boosters', title: 'Rank Booster', slug: 'rank-boosters' },
+    { id: 'top-numerical', title: 'Top Numerical', slug: 'top-numerical' },
+    { id: 'advanced', title: 'Advanced Questions', slug: 'advanced' },
+    { id: 'beginner', title: 'Beginner Qs', slug: 'beginner' }
+  ], []);
+
+  // Compute live question counts across standard buckets
+  const calculateBucketCounts = (qs, currentBuckets) => {
+    if (!Array.isArray(qs) || qs.length === 0) return currentBuckets;
+    return currentBuckets.map(b => {
+      let count = b.totalQuestions || 0;
+      if (b.id === 'all-pyqs' || b.isAll) {
+        count = qs.length;
+      } else if (b.id === 'top-numerical') {
+        count = qs.filter(q => q.type === 'numerical').length;
+      } else if (b.id === 'must-do') {
+        const matching = qs.filter(q => {
+          const title = q.previousYearPapers?.[0]?.title || '';
+          const match = title.match(/20\d\d/);
+          return match && parseInt(match[0]) >= 2020;
+        });
+        count = matching.length > 0 ? matching.length : Math.min(25, qs.length);
+      } else if (b.id === 'most-relevant') {
+        const matching = qs.filter(q => {
+          const title = q.previousYearPapers?.[0]?.title || '';
+          return title.includes('2024') || title.includes('2023') || title.includes('2022');
+        });
+        count = matching.length > 0 ? matching.length : Math.min(20, qs.length);
+      } else if (b.id === 'rank-boosters' || b.id === 'advanced') {
+        const matching = qs.filter(q => {
+          const diff = String(q.difficulty ?? q.level ?? '').toLowerCase();
+          const paper = (q.previousYearPapers?.[0]?.title || '').toLowerCase();
+          return diff.includes('hard') || diff === '3' || paper.includes('advanced');
+        });
+        count = matching.length > 0 ? matching.length : Math.min(15, qs.length);
+      } else if (b.id === 'beginner') {
+        const matching = qs.filter(q => {
+          const diff = String(q.difficulty ?? q.level ?? '').toLowerCase();
+          return diff.includes('easy') || diff === '1' || q.type === 'singleCorrect';
+        });
+        count = matching.length > 0 ? matching.length : Math.min(15, qs.length);
+      }
+      return { ...b, totalQuestions: count };
+    });
+  };
+
   const loadBuckets = async (examId, subjectId, chapterId) => {
     setLoadingBuckets(true);
     setBuckets([]);
     setSelectedBucket(null);
     setAllQuestions([]);
+    setChapterMasterQuestions([]);
+    chapterMasterRef.current = [];
     setSelectedQuestionIds(new Set());
 
     try {
       const res = await api.getBuckets(examId, subjectId, chapterId);
-      if (res.success && res.buckets.length > 0) {
-        // Ensure All PYQs is available as the first option
-        const currentCh = chapters.find(c => c.id === chapterId);
-        const totalQCount = currentCh?.totalQuestions || res.buckets.reduce((sum, b) => sum + (b.totalQuestions || 0), 0);
+      const serverBuckets = (res.success && Array.isArray(res.buckets)) ? res.buckets : [];
 
-        const allPyqsBucket = {
-          id: 'all-pyqs',
-          title: 'All PYQs',
-          totalQuestions: totalQCount || 'All',
-          isAll: true
-        };
-
-        const bucketsWithAll = [allPyqsBucket, ...res.buckets.filter(b => b.id !== 'all-pyqs')];
-        setBuckets(bucketsWithAll);
-        setSelectedBucket(allPyqsBucket);
-        loadBucketQuestions(examId, subjectId, chapterId, allPyqsBucket.id, bucketsWithAll);
+      // Combine server buckets with standard MARKS buckets to ensure all buckets are always loaded
+      const combined = [...serverBuckets];
+      for (const std of STANDARD_MARKS_BUCKETS) {
+        if (!combined.some(b => b.id === std.id || (b.title || '').toLowerCase() === std.title.toLowerCase())) {
+          combined.push({ ...std });
+        }
       }
+
+      setBuckets(combined);
+      const defaultBucket = combined.find(b => b.id === 'all-pyqs') || combined[0];
+      setSelectedBucket(defaultBucket);
+      loadBucketQuestions(examId, subjectId, chapterId, defaultBucket.id, combined);
     } catch (e) {
-      console.error(e);
+      console.warn('Using standard MARKS buckets fallback:', e);
+      setBuckets(STANDARD_MARKS_BUCKETS);
+      const defaultBucket = STANDARD_MARKS_BUCKETS[0];
+      setSelectedBucket(defaultBucket);
+      loadBucketQuestions(examId, subjectId, chapterId, defaultBucket.id, STANDARD_MARKS_BUCKETS);
     } finally {
       setLoadingBuckets(false);
     }
@@ -313,7 +368,10 @@ export default function App() {
           }
         });
         setAllQuestions(allDemoQs);
+        setChapterMasterQuestions(allDemoQs);
+        chapterMasterRef.current = allDemoQs;
         setSelectedQuestionIds(new Set(allDemoQs.map(q => q._id)));
+        setBuckets(prev => calculateBucketCounts(allDemoQs, prev));
       } else {
         const qs = demoDataStore.questions[bucketId] || [];
         setAllQuestions(qs);
@@ -368,34 +426,84 @@ export default function App() {
           const hasDetails = questions[0] && typeof questions[0] === 'object' && (questions[0].question || questions[0].options);
           if (hasDetails) {
             setAllQuestions(questions);
+            setChapterMasterQuestions(questions);
+            chapterMasterRef.current = questions;
             setSelectedQuestionIds(new Set(questions.map(q => q._id || q.id)));
+            setBuckets(prev => calculateBucketCounts(questions, prev));
           } else {
             const batchRes = await api.getQuestionsBatch(questionIds);
             if (batchRes.success) {
               setAllQuestions(batchRes.questions);
+              setChapterMasterQuestions(batchRes.questions);
+              chapterMasterRef.current = batchRes.questions;
               setSelectedQuestionIds(new Set(batchRes.questions.map(q => q._id)));
+              setBuckets(prev => calculateBucketCounts(batchRes.questions, prev));
             }
           }
         }
       } else {
-        const res = await api.getBucketQuestions(examId, subjectId, chapterId, bucketId);
-        if (res.success) {
-          const rawQs = res.questions || [];
-          const questionIds = rawQs.map(q => q._id || q.id || q).filter(Boolean);
+        let loadedQs = [];
+        try {
+          const res = await api.getBucketQuestions(examId, subjectId, chapterId, bucketId);
+          if (res && res.success && Array.isArray(res.questions) && res.questions.length > 0) {
+            const rawQs = res.questions;
+            const questionIds = rawQs.map(q => q._id || q.id || q).filter(Boolean);
 
-          if (questionIds.length > 0) {
-            const hasDetails = rawQs[0] && typeof rawQs[0] === 'object' && (rawQs[0].question || rawQs[0].options);
-            if (hasDetails) {
-              setAllQuestions(rawQs);
-              setSelectedQuestionIds(new Set(rawQs.map(q => q._id || q.id)));
-            } else {
-              const batchRes = await api.getQuestionsBatch(questionIds);
-              if (batchRes.success) {
-                setAllQuestions(batchRes.questions);
-                setSelectedQuestionIds(new Set(batchRes.questions.map(q => q._id)));
+            if (questionIds.length > 0) {
+              const hasDetails = rawQs[0] && typeof rawQs[0] === 'object' && (rawQs[0].question || rawQs[0].options);
+              if (hasDetails) {
+                loadedQs = rawQs;
+              } else {
+                const batchRes = await api.getQuestionsBatch(questionIds);
+                if (batchRes && batchRes.success && Array.isArray(batchRes.questions)) {
+                  loadedQs = batchRes.questions;
+                }
               }
             }
           }
+        } catch (e) {
+          console.warn(`Server bucket questions failed for ${bucketId}, falling back to chapter master:`, e.message);
+        }
+
+        // Fallback to chapterMasterQuestions if server returned 0 questions
+        const masterPool = chapterMasterRef.current.length > 0 ? chapterMasterRef.current : chapterMasterQuestions;
+        if (loadedQs.length === 0 && masterPool.length > 0) {
+          if (bucketId === 'top-numerical') {
+            loadedQs = masterPool.filter(q => q.type === 'numerical');
+          } else if (bucketId === 'must-do') {
+            loadedQs = masterPool.filter(q => {
+              const title = q.previousYearPapers?.[0]?.title || '';
+              const match = title.match(/20\d\d/);
+              return match && parseInt(match[0], 10) >= 2020;
+            });
+            if (loadedQs.length === 0) loadedQs = masterPool.slice(0, 30);
+          } else if (bucketId === 'most-relevant') {
+            loadedQs = masterPool.filter(q => {
+              const title = q.previousYearPapers?.[0]?.title || '';
+              return title.includes('2024') || title.includes('2023') || title.includes('2022') || title.includes('2021');
+            });
+            if (loadedQs.length === 0) loadedQs = masterPool.slice(0, 25);
+          } else if (bucketId === 'rank-boosters' || bucketId === 'advanced') {
+            loadedQs = masterPool.filter(q => {
+              const diff = String(q.difficulty ?? q.level ?? '').toLowerCase();
+              const paper = (q.previousYearPapers?.[0]?.title || '').toLowerCase();
+              return diff.includes('hard') || diff === '3' || paper.includes('advanced') || (q.accuracy && q.accuracy < 45);
+            });
+            if (loadedQs.length === 0) loadedQs = masterPool.slice(0, 20);
+          } else if (bucketId === 'beginner') {
+            loadedQs = masterPool.filter(q => {
+              const diff = String(q.difficulty ?? q.level ?? '').toLowerCase();
+              return diff.includes('easy') || diff === '1' || q.type === 'singleCorrect' || (q.accuracy && q.accuracy >= 60);
+            });
+            if (loadedQs.length === 0) loadedQs = masterPool.slice(0, 20);
+          } else {
+            loadedQs = masterPool;
+          }
+        }
+
+        if (loadedQs.length > 0) {
+          setAllQuestions(loadedQs);
+          setSelectedQuestionIds(new Set(loadedQs.map(q => q._id || q.id)));
         }
       }
     } catch (e) {
@@ -509,6 +617,54 @@ export default function App() {
 
   const handleSelectBucket = (b) => {
     setSelectedBucket(b);
+
+    // Instant client-side filtering if master question pool exists
+    const masterPool = chapterMasterRef.current.length > 0 ? chapterMasterRef.current : chapterMasterQuestions;
+    if (masterPool.length > 0) {
+      if (b.id === 'all-pyqs') {
+        setAllQuestions(masterPool);
+        setSelectedQuestionIds(new Set(masterPool.map(q => q._id || q.id)));
+      } else {
+        let filtered = [];
+        if (b.id === 'top-numerical') {
+          filtered = masterPool.filter(q => q.type === 'numerical');
+        } else if (b.id === 'must-do') {
+          filtered = masterPool.filter(q => {
+            const title = q.previousYearPapers?.[0]?.title || '';
+            const match = title.match(/20\d\d/);
+            return match && parseInt(match[0], 10) >= 2020;
+          });
+          if (filtered.length === 0) filtered = masterPool.slice(0, 30);
+        } else if (b.id === 'most-relevant') {
+          filtered = masterPool.filter(q => {
+            const title = q.previousYearPapers?.[0]?.title || '';
+            return title.includes('2024') || title.includes('2023') || title.includes('2022') || title.includes('2021');
+          });
+          if (filtered.length === 0) filtered = masterPool.slice(0, 25);
+        } else if (b.id === 'rank-boosters' || b.id === 'advanced') {
+          filtered = masterPool.filter(q => {
+            const diff = String(q.difficulty ?? q.level ?? '').toLowerCase();
+            const paper = (q.previousYearPapers?.[0]?.title || '').toLowerCase();
+            return diff.includes('hard') || diff === '3' || paper.includes('advanced') || (q.accuracy && q.accuracy < 45);
+          });
+          if (filtered.length === 0) filtered = masterPool.slice(0, 20);
+        } else if (b.id === 'beginner') {
+          filtered = masterPool.filter(q => {
+            const diff = String(q.difficulty ?? q.level ?? '').toLowerCase();
+            return diff.includes('easy') || diff === '1' || q.type === 'singleCorrect' || (q.accuracy && q.accuracy >= 60);
+          });
+          if (filtered.length === 0) filtered = masterPool.slice(0, 20);
+        } else {
+          filtered = masterPool;
+        }
+
+        if (filtered.length > 0) {
+          setAllQuestions(filtered);
+          setSelectedQuestionIds(new Set(filtered.map(q => q._id || q.id)));
+        }
+      }
+    }
+
     if (selectedExam && selectedSubject && selectedChapter) {
       loadBucketQuestions(selectedExam.id, selectedSubject.id, selectedChapter.id, b.id);
     }

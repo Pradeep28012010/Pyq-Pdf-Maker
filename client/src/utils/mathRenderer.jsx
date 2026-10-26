@@ -29,10 +29,14 @@ function sanitizeFormula(rawFormula) {
   if (!rawFormula) return '';
   let f = String(rawFormula).trim();
 
-  // 1. Strip all unescaped dollar signs from inside math mode (prevents "Can't use function '$' in math mode")
+  // 1. Strip all HTML tags from inside math mode (e.g. <br/>, <br>, <span>) so KaTeX never prints '< br/ >'
+  f = f.replace(/<\s*br\s*\/?\s*>/gi, ' ');
+  f = f.replace(/<[^>]+>/g, '');
+
+  // 2. Strip all unescaped dollar signs from inside math mode (prevents "Can't use function '$' in math mode")
   f = f.replace(/(?<!\\)\$/g, '');
 
-  // 2. Decode HTML entities that may have leaked into math mode
+  // 3. Decode HTML entities that may have leaked into math mode
   f = f.replace(/&amp;/g, '&')
        .replace(/&lt;/g, '<')
        .replace(/&gt;/g, '>')
@@ -40,20 +44,20 @@ function sanitizeFormula(rawFormula) {
        .replace(/&#39;/g, "'")
        .replace(/&nbsp;/g, ' ');
 
-  // 3. Fix common MARKS App database quirks
+  // 4. Fix common MARKS App database quirks
   f = f.replace(/\\mathrm\{~([a-zA-Z0-9]+)\}/g, '\\mathrm{$1}');
 
-  // 4. Fix unescaped percentage signs (in LaTeX % is a comment that truncates formulas!)
+  // 5. Fix unescaped percentage signs (in LaTeX % is a comment that truncates formulas!)
   f = f.replace(/(?<!\\)%/g, '\\%');
 
-  // 5. Balance unclosed braces if any
+  // 6. Balance unclosed braces if any
   const openBraces = (f.match(/\{/g) || []).length;
   const closeBraces = (f.match(/\}/g) || []).length;
   if (openBraces > closeBraces) {
     f = f + '}'.repeat(openBraces - closeBraces);
   }
 
-  // 6. Balance unclosed environments
+  // 7. Balance unclosed environments
   const envs = ['aligned', 'align', 'matrix', 'pmatrix', 'bmatrix', 'cases', 'array', 'gather', 'equation'];
   for (const env of envs) {
     const beginCount = (f.match(new RegExp(`\\\\begin\\{${env}\\*?\\}`, 'g')) || []).length;
@@ -75,57 +79,77 @@ function preprocessMarksContent(rawStr) {
   if (!rawStr) return '';
   let content = String(rawStr);
 
-  // 1. Normalize malformed breaks & HTML entities
+  // 1. Normalize malformed breaks & double-escaped HTML entities
+  content = content.replace(/&amp;lt;/gi, '<').replace(/&amp;gt;/gi, '>');
   content = content.replace(/&lt;\s*br\s*\/?\s*&gt;/gi, '<br/>');
   content = content.replace(/<\s*br\s*\/?\s*>/gi, '<br/>');
   content = content.replace(/&nbsp;/gi, ' ');
 
   // 2. Standardize LaTeX delimiters \( ... \) -> $ ... $ and \[ ... \] -> $$ ... $$
-  content = content.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$1$$');
-  content = content.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+  // Using function callbacks to avoid JavaScript string replacement bugs with $
+  content = content.replace(/\\\[([\s\S]*?)\\\]/g, (_m, g) => `$$${g}$$`);
+  content = content.replace(/\\\(([\s\S]*?)\\\)/g, (_m, g) => `$${g}$`);
 
-  // 3. Handle cases where a single $...$ improperly wraps across HTML breaks
+  // 3. Handle cases where $...$ or $$...$$ improperly wraps across HTML <br/> breaks
   // e.g. "$ MATH1 <br/> TEXT <br/> MATH2 $"
-  content = content.replace(/\$([^$]+?)\$/g, (match, inner) => {
+  content = content.replace(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$)/g, (match) => {
+    const isBlock = match.startsWith('$$');
+    const inner = isBlock ? match.slice(2, -2) : match.slice(1, -1);
     if (inner.includes('<br/>')) {
       const parts = inner.split(/<br\/>/g);
       return parts.map(part => {
         let p = part.trim();
         if (!p) return '';
-        // If it starts with an environment like \begin{aligned} ... \end{aligned}
         if (p.includes('\\begin{') && p.includes('\\end{')) {
           p = p.replace(/\$/g, '').trim();
           return `$$${p}$$`;
         }
-        // Plain text sentence (no backslashes and no math operators)
-        if (!p.includes('\\') && !/[=_^]/.test(p)) {
-          return p;
+
+        // Check if chunk contains multi-word English text outside \text{}
+        const textStripped = p.replace(/\\text\s*\{[^}]*\}/g, '');
+        const words = textStripped.match(/[a-zA-Z]{3,}/g) || [];
+        const mathKeywords = new Set(['sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'ln', 'lim', 'max', 'min', 'det', 'exp', 'deg', 'dim', 'ker', 'gcd', 'lcm', 'sqrt', 'frac', 'mathrm', 'mathbf', 'mathit', 'mathbb', 'mathcal', 'right', 'left', 'begin', 'aligned', 'matrix', 'cases']);
+        const proseWords = words.filter(w => !mathKeywords.has(w.toLowerCase()));
+
+        if (proseWords.length >= 2) {
+          // English prose with math symbols! Leave prose as normal HTML, wrap only math tokens
+          let prose = p;
+          prose = prose.replace(/(?<!\$)\\([a-zA-Z]+(?:\s*\{[^}]*\})*)(?!\$)/g, (m) => `$${m}$`);
+          prose = prose.replace(/(?<![\\\$a-zA-Z])([A-Z](?:_\{?[0-9a-zA-Z]+\}?)?)(?![a-zA-Z\$])/g, (m) => `$${m}$`);
+          return prose;
         }
-        // Leading sentence words like "Let P(1,2)" or "Where x = 1"
-        const wordMatch = p.match(/^((?:Let|Where|Given|Since|If|Then|Hence|Therefore|And|Or|Putting|From|By|Case\s+\d+:?|Step\s+\d+:?)\s+)(.*)$/i);
-        if (wordMatch) {
-          const prefix = wordMatch[1];
-          const mathPart = wordMatch[2].replace(/\$/g, '').trim();
-          return `${prefix}$${mathPart}$`;
-        }
+
         p = p.replace(/\$/g, '').trim();
-        return `$${p}$`;
+        return isBlock ? `$$${p}$$` : `$${p}$`;
       }).join('<br/>');
     }
     return match;
   });
 
-  // 4. If there are environments without $$ like \begin{aligned} ... \end{aligned}
+  // 4. Wrap naked LaTeX math commands that are outside of $ delimiters
+  const segments = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$)/g);
+  for (let i = 0; i < segments.length; i++) {
+    if (!segments[i].startsWith('$')) {
+      // Naked math commands: \lambda, \alpha, \sqrt{2}, etc.
+      segments[i] = segments[i].replace(/\\(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|sqrt|frac|pm|mp|times|div|le|ge|ne|approx|equiv|partial|nabla|infty|int|sum|prod|cup|cap|subset|subseteq|in|notin|to|rightarrow|leftarrow|leftrightarrow|dots|cdots|ldots|cdot|circ|degree)\b(?:\s*\{[^}]*\})?/g, (m) => `$${m}$`);
+      // Naked pure equation lines
+      segments[i] = segments[i].replace(/((?:[a-zA-Z0-9_\{\}\^:]+\s*[:=]\s*)?[^<$\n]*(?:\\sqrt|\\frac|\\text|\^|_)[^<$\n]*)/g, (match) => {
+        const textStripped = match.replace(/\\text\s*\{[^}]*\}/g, '');
+        const words = textStripped.match(/[a-zA-Z]{3,}/g) || [];
+        const mathKeywords = new Set(['sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'ln', 'lim', 'max', 'min', 'det', 'exp', 'deg', 'dim', 'ker', 'gcd', 'lcm', 'sqrt', 'frac', 'mathrm', 'mathbf', 'mathit', 'mathbb', 'mathcal', 'right', 'left', 'begin', 'aligned', 'matrix', 'cases']);
+        const proseWords = words.filter(w => !mathKeywords.has(w.toLowerCase()));
+        if (proseWords.length === 0 && match.trim().length > 3) {
+          return `$$${match.trim()}$$`;
+        }
+        return match;
+      });
+    }
+  }
+  content = segments.join('');
+
+  // 5. If there are environments without $$ like \begin{aligned} ... \end{aligned}
   if (!content.includes('$$') && /\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|cases|array|gather|equation)\*?\}/.test(content)) {
     content = content.replace(/(\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|cases|array|gather|equation)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|cases|array|gather|equation)\*?\})/g, '$$$1$$');
-  }
-
-  // 5. Only wrap in $ if it's a short isolated math expression (e.g. single option like \frac{1}{2})
-  // Never wrap long paragraphs or sentences containing English words
-  if (!content.includes('$') && content.length < 80 && !content.includes('<br') && !content.includes(' ') && !content.includes('Statement')) {
-    if (/^\\(frac|sqrt|mathrm|mathbf|alpha|beta|gamma|lambda|mu|pi|sigma|pm|mp|times|div|le|ge|ne|infty|partial|int|sum)\b/.test(content.trim())) {
-      content = `$${content.trim()}$`;
-    }
   }
 
   return content;

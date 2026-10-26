@@ -36,6 +36,7 @@ export default function CategorySelector({
     if (t.includes('booster')) return <Rocket className="w-4 h-4 text-purple-500" />;
     if (t.includes('advanced')) return <Rocket className="w-4 h-4 text-rose-500" />;
     if (t.includes('numerical')) return <Star className="w-4 h-4 text-[#0071e3]" />;
+    if (t.includes('beginner')) return <BookOpen className="w-4 h-4 text-emerald-500" />;
     return <BookOpen className="w-4 h-4 text-indigo-500" />;
   };
 
@@ -186,8 +187,8 @@ export default function CategorySelector({
                   }}
                   className={`p-3 rounded-2xl text-left border transition-all duration-200 flex flex-col justify-between cursor-pointer ${
                     active
-                      ? 'bg-blue-50/80 border-[#0071e3] ring-1 ring-[#0071e3] text-blue-950 font-semibold shadow-xs'
-                      : 'bg-white/60 hover:bg-white/95 border-white/80 hover:border-slate-300 text-slate-700 shadow-2xs hover:scale-[1.01]'
+                      ? 'bg-blue-50/90 border-[#0071e3] ring-1 ring-[#0071e3] text-blue-950 font-bold shadow-xs'
+                      : 'bg-white hover:bg-blue-50/30 border-slate-200/90 hover:border-[#0071e3]/60 text-slate-800 font-medium shadow-2xs hover:scale-[1.01]'
                   }`}
                 >
                   <div className="text-xs leading-snug line-clamp-2">{ch.title}</div>
@@ -240,8 +241,8 @@ export default function CategorySelector({
                     active
                       ? 'bg-gradient-to-br from-blue-50/90 to-indigo-50/90 border-[#0071e3] shadow-sm ring-1 ring-[#0071e3]'
                       : isAll
-                      ? 'bg-blue-50/40 border-blue-200/80 hover:border-blue-400 hover:bg-blue-50/70'
-                      : 'bg-white/60 hover:bg-white/95 border-white/80 hover:border-slate-300 shadow-2xs hover:scale-[1.01]'
+                      ? 'bg-blue-50/50 border-blue-300 hover:border-[#0071e3] hover:bg-blue-50/80 shadow-2xs'
+                      : 'bg-white hover:bg-blue-50/30 border-slate-200/90 hover:border-[#0071e3]/60 shadow-2xs hover:scale-[1.01]'
                   }`}
                 >
                   <div className={`p-2 rounded-xl backdrop-blur-sm ${
