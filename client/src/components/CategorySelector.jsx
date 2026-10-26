@@ -30,6 +30,7 @@ export default function CategorySelector({
 
   const getBucketIcon = (title = '') => {
     const t = String(title || '').toLowerCase();
+    if (t.includes('all')) return <Layers className="w-4 h-4 text-indigo-600 stroke-[2.5]" />;
     if (t.includes('must')) return <Star className="w-4 h-4 text-amber-500 fill-amber-500" />;
     if (t.includes('relevant')) return <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />;
     if (t.includes('booster')) return <Rocket className="w-4 h-4 text-purple-500" />;
@@ -217,6 +218,8 @@ export default function CategorySelector({
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {buckets.map(b => {
               const active = selectedBucket?.id === b.id;
+              const isAll = b.id === 'all-pyqs' || b.isAll || (b.title || '').toLowerCase().includes('all');
+
               return (
                 <button
                   key={b.id}
@@ -224,18 +227,27 @@ export default function CategorySelector({
                   className={`p-3 rounded-xl border text-left transition flex items-center gap-3 relative cursor-pointer ${
                     active
                       ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-indigo-500 shadow-sm ring-1 ring-indigo-500'
+                      : isAll
+                      ? 'bg-indigo-50/40 border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50/70'
                       : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50/50'
                   }`}
                 >
-                  <div className={`p-2 rounded-lg ${active ? 'bg-indigo-100' : 'bg-gray-100'}`}>
+                  <div className={`p-2 rounded-lg ${active ? 'bg-indigo-100 text-indigo-900' : isAll ? 'bg-indigo-100/70 text-indigo-700' : 'bg-gray-100'}`}>
                     {getBucketIcon(b.title)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <span className={`text-xs font-bold block truncate ${active ? 'text-indigo-900' : 'text-gray-800'}`}>
-                      {b.title}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xs font-bold block truncate ${active ? 'text-indigo-900' : 'text-gray-800'}`}>
+                        {b.title}
+                      </span>
+                      {isAll && (
+                        <span className="text-[9px] font-extrabold uppercase px-1 py-0.2 rounded bg-indigo-200/80 text-indigo-900">
+                          Complete
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[11px] text-gray-500 block">
-                      {b.totalQuestions ? `${b.totalQuestions} Questions` : 'Questions'}
+                      {b.totalQuestions ? `${b.totalQuestions} Questions` : 'All Questions'}
                     </span>
                   </div>
                   {active && (

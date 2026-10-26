@@ -216,6 +216,18 @@ router.get('/exam/:examId/subject/:subjectId/chapter/:chapterId/buckets', async 
       slug: b.slug
     }));
 
+    // Ensure 'All PYQs' bucket is present at the front
+    const hasAll = formattedBuckets.some(b => (b.title || '').toLowerCase().includes('all') || b.id === 'all-pyqs');
+    if (!hasAll) {
+      formattedBuckets.unshift({
+        id: 'all-pyqs',
+        title: 'All PYQs',
+        totalQuestions: data?.chapter?.totalQuestions || data?.totalQuestions || 0,
+        slug: 'all-pyqs',
+        isAll: true
+      });
+    }
+
     return res.json({
       success: true,
       chapterTitle: data?.chapter?.title || chapterId,
@@ -227,7 +239,7 @@ router.get('/exam/:examId/subject/:subjectId/chapter/:chapterId/buckets', async 
   }
 });
 
-// Get questions in a bucket
+// Get questions in a bucket (supports 'all-pyqs')
 router.get('/exam/:examId/subject/:subjectId/chapter/:chapterId/bucket/:bucketId/questions', async (req, res) => {
   const examId = resolveExamId(req.params.examId);
   const { subjectId, chapterId, bucketId } = req.params;
@@ -235,9 +247,64 @@ router.get('/exam/:examId/subject/:subjectId/chapter/:chapterId/bucket/:bucketId
   if (!token) return res.status(401).json({ success: false, error: 'Token required' });
 
   const client = getClient(token);
-  console.log(`Fetching questions for bucket: ${bucketId}`);
+  console.log(`Fetching questions for chapter: ${chapterId}, bucket: ${bucketId}`);
 
   try {
+    // If 'all-pyqs' requested, attempt direct chapter endpoint or aggregate across buckets
+    if (bucketId === 'all-pyqs' || bucketId === 'all') {
+      try {
+        const url = `/api/v4/cpyqb/exam/${examId}/subject/${subjectId}/chapter/${chapterId}/questions?limit=250&offset=0&platform=web`;
+        const response = await client.get(url);
+        const data = response.data?.data;
+        const questions = Array.isArray(data?.questions)
+          ? data.questions
+          : Array.isArray(data?.questions?.data)
+            ? data.questions.data
+            : [];
+
+        if (questions.length > 0) {
+          console.log(`Directly fetched ${questions.length} questions for All PYQs`);
+          return res.json({
+            success: true,
+            total: data?.total || questions.length,
+            questions
+          });
+        }
+      } catch (e) {
+        console.log('Chapter questions endpoint not directly accessible; aggregating across buckets');
+      }
+
+      // Aggregate across all buckets for this chapter
+      const bRes = await client.get(`/api/v4/cpyqb/exam/${examId}/subject/${subjectId}/chapter/${chapterId}/buckets`);
+      const bData = bRes.data?.data;
+      let rawBuckets = Array.isArray(bData?.buckets) ? bData.buckets : Array.isArray(bData) ? bData : [];
+      const bucketIds = rawBuckets.map(b => b.id || b._id).filter(Boolean);
+
+      const uniqueMap = new Map();
+      for (const bId of bucketIds) {
+        try {
+          const qRes = await client.get(`/api/v4/cpyqb/exam/${examId}/subject/${subjectId}/chapter/${chapterId}/bucket/${bId}/questions?limit=100&offset=0&platform=web`);
+          const qs = Array.isArray(qRes.data?.data?.questions) ? qRes.data.data.questions : [];
+          for (const q of qs) {
+            const id = q._id || q.id || (typeof q === 'string' ? q : null);
+            if (id && !uniqueMap.has(id)) {
+              uniqueMap.set(id, q);
+            }
+          }
+        } catch (err) {
+          // continue to next bucket
+        }
+      }
+
+      const combinedQuestions = Array.from(uniqueMap.values());
+      console.log(`Aggregated ${combinedQuestions.length} unique questions for All PYQs`);
+      return res.json({
+        success: true,
+        total: combinedQuestions.length,
+        questions: combinedQuestions
+      });
+    }
+
     const url = `/api/v4/cpyqb/exam/${examId}/subject/${subjectId}/chapter/${chapterId}/bucket/${bucketId}/questions?limit=100&offset=0&platform=web`;
     const response = await client.get(url);
     const data = response.data?.data;
