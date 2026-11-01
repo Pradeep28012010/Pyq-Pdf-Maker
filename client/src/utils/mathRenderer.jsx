@@ -22,69 +22,136 @@ function toSafeString(val) {
   return String(val);
 }
 
-const MARKS_BASE_URL = 'https://production.getmarks.app';
+const MARKS_CDN_BASE = 'https://cdn-question-pool.getmarks.app';
 
 /**
- * Resolves any image URL (relative or absolute) to a valid absolute URL
+ * Resolves any image URL (relative, protocol-relative, or entity-encoded) to a clean absolute HTTPS URL.
  */
 function resolveImageUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
-  const trimmed = rawUrl.trim();
+  let trimmed = rawUrl.trim();
   if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
     return null; // Return null so callers preserve data/blob URIs as-is
   }
 
-  // If already proxied, extract original URL if needed or keep
-  if (trimmed.startsWith('/api/proxy-image')) {
-    return null;
+  // If already proxied, extract the inner destination URL
+  if (trimmed.includes('/api/proxy-image?url=')) {
+    try {
+      const match = trimmed.match(/[?&]url=([^&]+)/);
+      if (match && match[1]) {
+        trimmed = decodeURIComponent(match[1]);
+      }
+    } catch {
+      // keep trimmed
+    }
   }
+
+  // Unescape HTML entities that break AWS S3 presigned URLs (e.g. &amp;Signature -> &Signature)
+  trimmed = trimmed
+    .replace(/&amp;/g, '&')
+    .replace(/&#38;/g, '&')
+    .replace(/&quot;/g, '')
+    .replace(/&#39;/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
 
   try {
     if (trimmed.startsWith('//')) {
       return `https:${trimmed}`;
     }
-    if (trimmed.startsWith('/')) {
-      return `${MARKS_BASE_URL}${trimmed}`;
+    if (trimmed.startsWith('http://')) {
+      return `https://${trimmed.slice(7)}`;
     }
-    const parsed = new URL(trimmed);
-    if (['http:', 'https:'].includes(parsed.protocol)) {
+    if (trimmed.startsWith('https://')) {
+      // If it erroneously points to production.getmarks.app for an upload/image, reroute to CDN
+      if (trimmed.includes('production.getmarks.app/uploads/') || trimmed.includes('production.getmarks.app/question-pool/')) {
+        return trimmed.replace('production.getmarks.app', 'cdn-question-pool.getmarks.app');
+      }
       return trimmed;
     }
-    return `${MARKS_BASE_URL}/${trimmed}`;
+    if (trimmed.startsWith('/')) {
+      return `${MARKS_CDN_BASE}${trimmed}`;
+    }
+    return `${MARKS_CDN_BASE}/${trimmed.replace(/^(\.\/)+/, '')}`;
   } catch {
-    // If it's a relative path without leading slash
-    return `${MARKS_BASE_URL}/${trimmed.replace(/^(\.\/)+/, '')}`;
+    return `${MARKS_CDN_BASE}/${trimmed.replace(/^(\.\/)+/, '')}`;
   }
 }
 
 /**
  * Proxies and repairs <img> tags so diagrams render reliably both in print, offline HTML, and screen.
- * Includes an automatic fallback to the direct CDN url if the proxy endpoint is unavailable.
+ * - Extracts URLs from src, data-src, data-original, data-url, or data-lazy-src
+ * - Sets referrerpolicy="no-referrer" to prevent CloudFront 403 Forbidden hotlink errors
+ * - Automatically falls back to /api/proxy-image if direct CDN loading is blocked
  */
 function rewriteQuestionImages(rawHtml) {
   if (!rawHtml || typeof rawHtml !== 'string') return rawHtml || '';
 
-  return rawHtml.replace(/<img\b([^>]*?)src=(['"]?)([^'"\s>]+)\2([^>]*)>/gi, (match, before, _quote, src, after) => {
-    const trimmed = (src || '').trim();
-    if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('blob:') || trimmed.startsWith('/api/proxy-image')) {
+  return rawHtml.replace(/<img\b([^>]*)>/gi, (match, attrs) => {
+    // Extract src and any lazy-load data attributes
+    const getAttr = (name) => {
+      const re = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:(['"])(.*?)\\1|([^\\s>]+))`, 'i');
+      const m = attrs.match(re);
+      return m ? (m[2] !== undefined ? m[2] : m[3]) : null;
+    };
+
+    const dataSrc = getAttr('data-src') || getAttr('data-original') || getAttr('data-url') || getAttr('data-lazy-src');
+    const src = getAttr('src');
+
+    // Prefer dataSrc if src is empty or a data URI placeholder
+    let candidate = src;
+    if (!candidate || candidate.startsWith('data:') || candidate.startsWith('blob:')) {
+      if (dataSrc) candidate = dataSrc;
+    } else if (dataSrc && !dataSrc.startsWith('data:') && !dataSrc.startsWith('blob:')) {
+      candidate = dataSrc;
+    }
+
+    if (!candidate) return match;
+
+    const resolved = resolveImageUrl(candidate);
+    if (!resolved) {
+      if (candidate.startsWith('data:') || candidate.startsWith('blob:')) {
+        return match;
+      }
       return match;
     }
 
-    const resolved = resolveImageUrl(trimmed);
-    if (!resolved) return match;
-
+    const directUrl = resolved;
     const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(resolved)}`;
-    // Fallback: If proxy is offline or returns error, load direct CDN image
-    const onErrorHandler = `this.onerror=null; this.src='${resolved}';`;
 
-    // Filter out duplicate class and src attributes from before/after
-    const cleanBefore = (before || '').replace(/\b(class|src|onerror|loading)=['"][^'"]*['"]/gi, '').trim();
-    const cleanAfter = (after || '').replace(/\b(class|src|onerror|loading)=['"][^'"]*['"]/gi, '').trim();
+    // Strip volatile attributes to rebuild cleanly
+    const cleanAttrs = attrs
+      .replace(/(?:^|\s)(src|data-src|data-original|data-url|data-lazy-src|referrerpolicy|crossorigin|loading|decoding|onerror)\s*=\s*(?:(['"]).*?\2|[^\s>]+)/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-    const attrs = [cleanBefore, cleanAfter].filter(Boolean).join(' ');
-    const attrString = attrs ? ` ${attrs}` : '';
+    // Preserve or merge class
+    const classMatch = cleanAttrs.match(/(?:^|\s)class\s*=\s*(?:(['"])(.*?)\1|([^\s>]+))/i);
+    let classStr = 'max-w-full h-auto inline-block my-2 rounded-md shadow-xs object-contain align-middle';
+    let remainingAttrs = cleanAttrs;
+    if (classMatch) {
+      const cls = classMatch[2] || classMatch[3] || '';
+      classStr = `${cls} max-w-full h-auto object-contain`.trim();
+      remainingAttrs = cleanAttrs.replace(classMatch[0], ' ').trim();
+    }
 
-    return `<img src="${proxyUrl}" onerror="${onErrorHandler}" class="max-w-full h-auto inline-block my-2 rounded-md shadow-xs object-contain" loading="eager" decoding="async"${attrString} />`;
+    // Direct CDN load with no-referrer strips the Referer header so CloudFront returns the image directly.
+    // If direct load fails (e.g. strict intranet or proxy), immediately fallback to /api/proxy-image.
+    const fallbackHandler = `if(!this.dataset.proxyTried){this.dataset.proxyTried='1';this.src='${proxyUrl}';}else{this.onerror=null;}`;
+
+    const parts = [
+      `src="${directUrl}"`,
+      `data-fallback-src="${proxyUrl}"`,
+      `referrerpolicy="no-referrer"`,
+      `crossorigin="anonymous"`,
+      `loading="eager"`,
+      `decoding="async"`,
+      `onerror="${fallbackHandler}"`,
+      `class="${classStr}"`,
+      remainingAttrs
+    ].filter(Boolean).join(' ');
+
+    return `<img ${parts} />`;
   });
 }
 
@@ -180,7 +247,7 @@ function preprocessMarksContent(rawStr) {
     const isBlock = match.startsWith('$$');
     const delim = isBlock ? '$$' : '$';
     const inner = isBlock ? match.slice(2, -2) : match.slice(1, -1);
-    const parts = inner.split(/(<img\b[^>]*>)/gi);
+    const parts = inner.split(/(<img\b(?:[^>"']|"[^"]*"|'[^']*')*\/?>)/gi);
     return parts.map(part => {
       if (!part) return '';
       if (part.startsWith('<img')) return part;
@@ -230,7 +297,7 @@ function preprocessMarksContent(rawStr) {
 
   // 5. Wrap naked LaTeX math in non-delimited segments
   // Split strictly by existing $ delimiters, <br/> tags, AND <img> tags so HTML is NEVER mangled!
-  const segments = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$|<br\/>|<img\b[^>]*>)/g);
+  const segments = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$|<br\/>|<img\b(?:[^>"']|"[^"]*"|'[^']*')*\/?>)/g);
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     if (!seg || seg.startsWith('$') || seg === '<br/>' || seg.startsWith('<img')) continue;
@@ -278,7 +345,7 @@ export function renderMathContent(rawInput) {
 
     const tokens = [];
     // Tokenize string by math delimiters AND <img> tags to guarantee images are never parsed as math
-    const regex = /(\$\$[\s\S]*?\$\$|\$([^$]+?)\$|\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}|<img\b[^>]*>)/g;
+    const regex = /(\$\$[\s\S]*?\$\$|\$([^$]+?)\$|\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}|<img\b(?:[^>"']|"[^"]*"|'[^']*')*\/?>)/g;
     let lastIndex = 0;
     let match;
 

@@ -18,11 +18,15 @@ export function downloadOfflineHtml({
   // Restore direct image URLs for standalone offline viewing
   htmlContent = htmlContent.replace(/src=["']\/api\/proxy-image\?url=([^"']+)["']/g, (_m, encoded) => {
     try {
-      return `src="${decodeURIComponent(encoded)}"`;
+      return `src="${decodeURIComponent(encoded)}" referrerpolicy="no-referrer"`;
     } catch {
-      return `src="${encoded}"`;
+      return `src="${encoded}" referrerpolicy="no-referrer"`;
     }
   });
+
+  // Ensure all <img> tags have referrerpolicy="no-referrer" and clean up dynamic onError scripts
+  htmlContent = htmlContent.replace(/<img\b(?![^>]*referrerpolicy)/gi, '<img referrerpolicy="no-referrer" ');
+  htmlContent = htmlContent.replace(/\bonerror=["'][^"']*["']/gi, '');
 
   const docTitle = `${exam?.title || 'Exam'}_${chapter?.title || 'Chapter'}_${bucket?.title || 'Worksheet'}`.replace(/[^a-zA-Z0-9_\u0900-\u097F]/g, '_');
 
@@ -30,6 +34,7 @@ export function downloadOfflineHtml({
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${docTitle} - MARKS Offline Worksheet</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">

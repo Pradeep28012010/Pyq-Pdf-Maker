@@ -417,47 +417,85 @@ router.post('/questions/batch', async (req, res) => {
   });
 });
 
-// Image proxy
+// In-memory cache for proxied images (max 500 images)
+const imageCache = new Map();
+
+// High-reliability Image Proxy with multi-CDN fallback, unescaped queries, & caching
 router.get('/proxy-image', async (req, res) => {
   let { url } = req.query;
   if (!url || typeof url !== 'string') return res.status(400).send('URL required');
   url = url.trim();
 
-  // If relative URL, resolve against MARKS_BASE
+  // Unescape HTML entities that break AWS S3 presigned URLs (e.g. &amp;Signature -> &Signature)
+  url = url
+    .replace(/&amp;/g, '&')
+    .replace(/&#38;/g, '&')
+    .replace(/&quot;/g, '')
+    .replace(/&#39;/g, '');
+
+  const MARKS_CDN = 'https://cdn-question-pool.getmarks.app';
+
+  // If relative URL, resolve against MARKS_CDN
   if (url.startsWith('//')) {
     url = `https:${url}`;
   } else if (url.startsWith('/')) {
-    url = `${MARKS_BASE}${url}`;
-  } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    url = `${MARKS_BASE}/${url}`;
+    url = `${MARKS_CDN}${url}`;
+  } else if (url.startsWith('http://')) {
+    url = `https://${url.slice(7)}`;
+  } else if (!url.startsWith('https://')) {
+    url = `${MARKS_CDN}/${url.replace(/^(\.\/)+/, '')}`;
   }
 
-  try {
-    const parsed = new URL(url);
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return res.status(400).send('Invalid protocol');
+  // Check cache first
+  if (imageCache.has(url)) {
+    const cached = imageCache.get(url);
+    res.set('Content-Type', cached.contentType);
+    res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    return res.send(cached.buffer);
+  }
+
+  // Prepare candidate URLs (primary + potential alternative CDN domains)
+  const candidateUrls = [url];
+  if (url.includes('production.getmarks.app')) {
+    candidateUrls.push(url.replace('production.getmarks.app', 'cdn-question-pool.getmarks.app'));
+    candidateUrls.push(url.replace('production.getmarks.app', 'cdn-assets.getmarks.app'));
+  } else if (url.includes('cdn-question-pool.getmarks.app')) {
+    candidateUrls.push(url.replace('cdn-question-pool.getmarks.app', 'cdn-assets.getmarks.app'));
+  }
+
+  for (const candidate of candidateUrls) {
+    try {
+      const response = await axios.get(candidate, {
+        responseType: 'arraybuffer',
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Referer': 'https://web.getmarks.app/',
+          'Origin': 'https://web.getmarks.app',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+        },
+        timeout: 12000
+      });
+
+      const contentType = response.headers['content-type'] || 'image/png';
+      const buffer = Buffer.from(response.data);
+
+      // Store in memory cache (evict oldest if size >= 500)
+      if (imageCache.size >= 500) {
+        const firstKey = imageCache.keys().next().value;
+        imageCache.delete(firstKey);
+      }
+      imageCache.set(url, { contentType, buffer });
+
+      res.set('Content-Type', contentType);
+      res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      return res.send(buffer);
+    } catch {
+      // Try next candidate
     }
-  } catch {
-    return res.status(400).send('Malformed URL');
   }
 
-  try {
-    const response = await axios.get(url, {
-      responseType: 'arraybuffer',
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Referer': 'https://web.getmarks.app/',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-      },
-      timeout: 12000
-    });
-    res.set('Content-Type', response.headers['content-type'] || 'image/png');
-    res.set('Cache-Control', 'public, max-age=86400');
-    return res.send(Buffer.from(response.data));
-  } catch (err) {
-    console.warn(`proxy-image failed for ${url}:`, err.message);
-    return res.status(404).send('Image failed');
-  }
+  console.warn(`proxy-image failed for all candidates of: ${url}`);
+  return res.status(404).send('Image failed');
 });
 
 // Demo Data

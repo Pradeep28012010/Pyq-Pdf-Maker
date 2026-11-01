@@ -250,6 +250,34 @@
   .katex {
     font-size: 0.95em;
   }
+
+  /* Question diagrams in print: scale to column width */
+  .print-newspaper-columns img,
+  .math-rendered img {
+    max-width: 100% !important;
+    height: auto !important;
+    object-fit: contain;
+  }
+}
+
+/* Question Tables and Match-the-Column Diagram Layouts */
+.math-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+}
+
+.math-content td,
+.math-content th {
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+
+.math-content img {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 @media screen {
