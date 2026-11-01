@@ -470,7 +470,6 @@ router.get('/proxy-image', async (req, res) => {
         headers: {
           'User-Agent': USER_AGENT,
           'Referer': 'https://web.getmarks.app/',
-          'Origin': 'https://web.getmarks.app',
           'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
         },
         timeout: 12000
@@ -486,6 +485,7 @@ router.get('/proxy-image', async (req, res) => {
       }
       imageCache.set(url, { contentType, buffer });
 
+      res.set('Access-Control-Allow-Origin', '*');
       res.set('Content-Type', contentType);
       res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
       return res.send(buffer);

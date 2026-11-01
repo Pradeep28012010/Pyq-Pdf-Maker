@@ -136,14 +136,14 @@ function rewriteQuestionImages(rawHtml) {
     }
 
     // Direct CDN load with no-referrer strips the Referer header so CloudFront returns the image directly.
-    // If direct load fails (e.g. strict intranet or proxy), immediately fallback to /api/proxy-image.
+    // Notice: We strictly DO NOT set crossorigin="anonymous" because standard <img> tags do not require CORS,
+    // and setting crossorigin forces strict CORS validation which fails on CDNs without wildcard Access-Control headers.
     const fallbackHandler = `if(!this.dataset.proxyTried){this.dataset.proxyTried='1';this.src='${proxyUrl}';}else{this.onerror=null;}`;
 
     const parts = [
       `src="${directUrl}"`,
       `data-fallback-src="${proxyUrl}"`,
       `referrerpolicy="no-referrer"`,
-      `crossorigin="anonymous"`,
       `loading="eager"`,
       `decoding="async"`,
       `onerror="${fallbackHandler}"`,
@@ -334,6 +334,8 @@ function preprocessMarksContent(rawStr) {
 
 /**
  * Parses a string containing LaTeX, HTML tags, and diagrams into safely rendered React nodes with KaTeX.
+ * Preserves complete HTML structures (tables, lists, cells) by replacing math delimiters in-place
+ * with KaTeX HTML rather than splitting the DOM across multiple wrapper spans.
  */
 export function renderMathContent(rawInput) {
   const rawStr = toSafeString(rawInput);
@@ -343,93 +345,46 @@ export function renderMathContent(rawInput) {
     const proxied = rewriteQuestionImages(rawStr);
     const content = preprocessMarksContent(proxied);
 
-    const tokens = [];
-    // Tokenize string by math delimiters AND <img> tags to guarantee images are never parsed as math
-    const regex = /(\$\$[\s\S]*?\$\$|\$([^$]+?)\$|\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}|<img\b(?:[^>"']|"[^"]*"|'[^']*')*\/?>)/g;
-    let lastIndex = 0;
-    let match;
+    // Replace all LaTeX math formulas with KaTeX rendered HTML in-place
+    const mathRegex = /(\$\$[\s\S]*?\$\$|\$([^$]+?)\$|\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\})/g;
 
-    while ((match = regex.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        tokens.push({
-          type: 'html',
-          value: content.substring(lastIndex, match.index)
-        });
-      }
+    const renderedHtml = content.replace(mathRegex, (match) => {
+      let formula = match;
+      let isBlock = false;
 
-      const matchedStr = match[0];
-      if (matchedStr.startsWith('<img')) {
-        tokens.push({ type: 'html', value: matchedStr });
-      } else {
-        let formula = matchedStr;
-        let isBlock = false;
-
-        if (matchedStr.startsWith('$$') && matchedStr.endsWith('$$')) {
-          formula = matchedStr.slice(2, -2);
+      if (match.startsWith('$$') && match.endsWith('$$')) {
+        formula = match.slice(2, -2);
+        isBlock = true;
+      } else if (match.startsWith('\\begin{')) {
+        formula = match;
+        isBlock = true;
+      } else if (match.startsWith('$') && match.endsWith('$')) {
+        formula = match.slice(1, -1);
+        if (formula.includes('\\begin{') || formula.includes('\\\\')) {
           isBlock = true;
-        } else if (matchedStr.startsWith('\\begin{')) {
-          formula = matchedStr;
-          isBlock = true;
-        } else if (matchedStr.startsWith('$') && matchedStr.endsWith('$')) {
-          formula = matchedStr.slice(1, -1);
-          if (formula.includes('\\begin{') || formula.includes('\\\\')) {
-            isBlock = true;
-          }
         }
-
-        tokens.push({
-          type: 'math',
-          value: sanitizeFormula(formula),
-          displayMode: isBlock
-        });
       }
 
-      lastIndex = regex.lastIndex;
-    }
-
-    if (lastIndex < content.length) {
-      tokens.push({
-        type: 'html',
-        value: content.substring(lastIndex)
-      });
-    }
+      try {
+        const sanitized = sanitizeFormula(formula);
+        return katex.renderToString(sanitized, {
+          displayMode: isBlock,
+          throwOnError: false,
+          errorColor: '#111827',
+          strict: false,
+          trust: true,
+          output: 'htmlAndMathml'
+        });
+      } catch {
+        return match;
+      }
+    });
 
     return (
-      <span className="math-rendered leading-relaxed inline-block max-w-full">
-        {tokens.map((token, idx) => {
-          if (token.type === 'math') {
-            try {
-              const html = katex.renderToString(token.value, {
-                displayMode: token.displayMode,
-                throwOnError: false,
-                errorColor: '#111827',
-                strict: false,
-                trust: true,
-                output: 'htmlAndMathml'
-              });
-              return (
-                <span
-                  key={idx}
-                  className={token.displayMode ? 'block my-1 text-center overflow-x-auto' : 'inline-block mx-0.5 align-middle'}
-                  dangerouslySetInnerHTML={{ __html: html }}
-                />
-              );
-            } catch {
-              return <span key={idx} className="font-mono text-xs">{token.value}</span>;
-            }
-          }
-
-          // HTML token: contains text, formatting, or safely proxied <img>
-          const cleanText = token.value.replace(/(?:^|\s)\$\s*(?:$|\s)/g, ' ');
-          const formattedHtml = cleanText.replace(/\n/g, '<br/>');
-          return (
-            <span
-              key={idx}
-              dangerouslySetInnerHTML={{ __html: formattedHtml }}
-            />
-          );
-        })}
-      </span>
+      <span
+        className="math-rendered leading-relaxed inline-block max-w-full w-full"
+        dangerouslySetInnerHTML={{ __html: renderedHtml }}
+      />
     );
   } catch (err) {
     console.warn('renderMathContent error:', err);
