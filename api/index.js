@@ -32,6 +32,7 @@ const questionCache = new Map();
 const EXAM_ID_MAP = {
   'jee-main': '615f0e999476412f48314daf',
   'jee-advanced': '616059150283de43c87e3e21',
+  'neet': '6160594a0283de43c87e3e22',
   'bitsat': '61a8a124e8ce0dc8a5c62d2c',
   'wbjee': '61961adca5a5260118868013',
   'mht-cet': '61c05599e8ce0dc8a5c62d32',
@@ -100,6 +101,7 @@ router.get('/exams', async (req, res) => {
   const exams = [
     { id: '615f0e999476412f48314daf', slug: 'jee-main', title: 'JEE Main', category: 'Engineering' },
     { id: '616059150283de43c87e3e21', slug: 'jee-advanced', title: 'JEE Advanced', category: 'Engineering' },
+    { id: '6160594a0283de43c87e3e22', slug: 'neet', title: 'NEET', category: 'Medical' },
     { id: '61a8a124e8ce0dc8a5c62d2c', slug: 'bitsat', title: 'BITSAT', category: 'Engineering' },
     { id: '61961adca5a5260118868013', slug: 'wbjee', title: 'WBJEE', category: 'Engineering' },
     { id: '61c05599e8ce0dc8a5c62d32', slug: 'mht-cet', title: 'MHT CET', category: 'Engineering' },
@@ -364,7 +366,11 @@ router.get('/exam/:examId/subject/:subjectId/chapter/:chapterId/bucket/:bucketId
 
 // Batch fetch full question details (with solutions & answer keys)
 router.post('/questions/batch', async (req, res) => {
-  const { questionIds } = req.body;
+  const { questionIds } = req.body || {};
+  if (!Array.isArray(questionIds) || questionIds.length === 0) {
+    return res.json({ success: true, total: 0, questions: [] });
+  }
+
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ success: false, error: 'Token required' });
 
@@ -373,6 +379,7 @@ router.post('/questions/batch', async (req, res) => {
   const uncachedIds = [];
 
   for (const qid of questionIds) {
+    if (!qid) continue;
     if (questionCache.has(qid)) {
       results.push(questionCache.get(qid));
     } else {
@@ -412,18 +419,43 @@ router.post('/questions/batch', async (req, res) => {
 
 // Image proxy
 router.get('/proxy-image', async (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).send('URL required');
+  let { url } = req.query;
+  if (!url || typeof url !== 'string') return res.status(400).send('URL required');
+  url = url.trim();
+
+  // If relative URL, resolve against MARKS_BASE
+  if (url.startsWith('//')) {
+    url = `https:${url}`;
+  } else if (url.startsWith('/')) {
+    url = `${MARKS_BASE}${url}`;
+  } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `${MARKS_BASE}/${url}`;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return res.status(400).send('Invalid protocol');
+    }
+  } catch {
+    return res.status(400).send('Malformed URL');
+  }
+
   try {
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
-      headers: { 'User-Agent': USER_AGENT },
-      timeout: 10000
+      headers: {
+        'User-Agent': USER_AGENT,
+        'Referer': 'https://web.getmarks.app/',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+      },
+      timeout: 12000
     });
     res.set('Content-Type', response.headers['content-type'] || 'image/png');
     res.set('Cache-Control', 'public, max-age=86400');
     return res.send(Buffer.from(response.data));
   } catch (err) {
+    console.warn(`proxy-image failed for ${url}:`, err.message);
     return res.status(404).send('Image failed');
   }
 });

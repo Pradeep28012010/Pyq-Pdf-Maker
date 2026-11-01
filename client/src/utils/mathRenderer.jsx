@@ -22,6 +22,72 @@ function toSafeString(val) {
   return String(val);
 }
 
+const MARKS_BASE_URL = 'https://production.getmarks.app';
+
+/**
+ * Resolves any image URL (relative or absolute) to a valid absolute URL
+ */
+function resolveImageUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return null; // Return null so callers preserve data/blob URIs as-is
+  }
+
+  // If already proxied, extract original URL if needed or keep
+  if (trimmed.startsWith('/api/proxy-image')) {
+    return null;
+  }
+
+  try {
+    if (trimmed.startsWith('//')) {
+      return `https:${trimmed}`;
+    }
+    if (trimmed.startsWith('/')) {
+      return `${MARKS_BASE_URL}${trimmed}`;
+    }
+    const parsed = new URL(trimmed);
+    if (['http:', 'https:'].includes(parsed.protocol)) {
+      return trimmed;
+    }
+    return `${MARKS_BASE_URL}/${trimmed}`;
+  } catch {
+    // If it's a relative path without leading slash
+    return `${MARKS_BASE_URL}/${trimmed.replace(/^(\.\/)+/, '')}`;
+  }
+}
+
+/**
+ * Proxies and repairs <img> tags so diagrams render reliably both in print, offline HTML, and screen.
+ * Includes an automatic fallback to the direct CDN url if the proxy endpoint is unavailable.
+ */
+function rewriteQuestionImages(rawHtml) {
+  if (!rawHtml || typeof rawHtml !== 'string') return rawHtml || '';
+
+  return rawHtml.replace(/<img\b([^>]*?)src=(['"]?)([^'"\s>]+)\2([^>]*)>/gi, (match, before, _quote, src, after) => {
+    const trimmed = (src || '').trim();
+    if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('blob:') || trimmed.startsWith('/api/proxy-image')) {
+      return match;
+    }
+
+    const resolved = resolveImageUrl(trimmed);
+    if (!resolved) return match;
+
+    const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(resolved)}`;
+    // Fallback: If proxy is offline or returns error, load direct CDN image
+    const onErrorHandler = `this.onerror=null; this.src='${resolved}';`;
+
+    // Filter out duplicate class and src attributes from before/after
+    const cleanBefore = (before || '').replace(/\b(class|src|onerror|loading)=['"][^'"]*['"]/gi, '').trim();
+    const cleanAfter = (after || '').replace(/\b(class|src|onerror|loading)=['"][^'"]*['"]/gi, '').trim();
+
+    const attrs = [cleanBefore, cleanAfter].filter(Boolean).join(' ');
+    const attrString = attrs ? ` ${attrs}` : '';
+
+    return `<img src="${proxyUrl}" onerror="${onErrorHandler}" class="max-w-full h-auto inline-block my-2 rounded-md shadow-xs object-contain" loading="eager" decoding="async"${attrString} />`;
+  });
+}
+
 /**
  * Thoroughly sanitizes and repairs LaTeX formula syntax so KaTeX never throws or shows errors.
  */
@@ -33,10 +99,11 @@ function sanitizeFormula(rawFormula) {
   f = f.replace(/<\s*br\s*\/?\s*>/gi, '\\\\ ');
   f = f.replace(/&lt;\s*br\s*\/?\s*&gt;/gi, '\\\\ ');
 
-  // 2. Strip only known HTML tags, NEVER mathematical inequalities like '< 4' or '> 0'!
-  f = f.replace(/<\/?(span|p|div|b|i|u|strong|em|font|table|tr|td|th|tbody|thead|sup|sub|center|h[1-6]|ul|ol|li)[^>]*>/gi, '');
+  // 2. Strip HTML tags (including <img>, <span>, <p>) from inside math mode,
+  // while carefully preserving mathematical inequalities like '< 4' or '> 0'!
+  f = f.replace(/<\/?(span|p|div|b|i|u|strong|em|font|table|tr|td|th|tbody|thead|sup|sub|center|h[1-6]|ul|ol|li|img)[^>]*>/gi, '');
 
-  // 3. Strip all unescaped dollar signs from inside math mode
+  // 3. Strip unescaped dollar signs from inside math mode
   f = f.replace(/(?<!\\)\$/g, '');
 
   // 4. Decode HTML entities that may have leaked into math mode
@@ -88,7 +155,7 @@ function sanitizeFormula(rawFormula) {
 }
 
 /**
- * Normalizes MARKS App raw text, fixing broken HTML breaks,
+ * Normalizes MARKS App raw text, isolating <img> tags from LaTeX delimiters,
  * standardizing LaTeX delimiters \(...\) and \[...\],
  * splitting oversized $ wrappers around HTML tags, and isolating LaTeX environments.
  */
@@ -106,7 +173,23 @@ function preprocessMarksContent(rawStr) {
   content = content.replace(/\\\[([\s\S]*?)\\\]/g, (_m, g) => `$$${g}$$`);
   content = content.replace(/\\\(([\s\S]*?)\\\)/g, (_m, g) => `$${g}$`);
 
-  // 3. Handle cases where $...$ or $$...$$ improperly wraps across HTML <br/> breaks
+  // 3. CRITICAL: Separate <img> tags from inside math mode!
+  // e.g. "$ formula1 <img src='...' /> formula2 $" -> "$ formula1 $ <img src='...' /> $ formula2 $"
+  content = content.replace(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$)/g, (match) => {
+    if (!match.includes('<img')) return match;
+    const isBlock = match.startsWith('$$');
+    const delim = isBlock ? '$$' : '$';
+    const inner = isBlock ? match.slice(2, -2) : match.slice(1, -1);
+    const parts = inner.split(/(<img\b[^>]*>)/gi);
+    return parts.map(part => {
+      if (!part) return '';
+      if (part.startsWith('<img')) return part;
+      const trimmed = part.trim();
+      return trimmed ? `${delim}${trimmed}${delim}` : '';
+    }).join(' ');
+  });
+
+  // 4. Handle cases where $...$ or $$...$$ improperly wraps across HTML <br/> breaks
   content = content.replace(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$)/g, (match) => {
     const isBlock = match.startsWith('$$');
     const inner = isBlock ? match.slice(2, -2) : match.slice(1, -1);
@@ -120,14 +203,18 @@ function preprocessMarksContent(rawStr) {
           return `$$${p}$$`;
         }
 
-        // Check if chunk contains multi-word English text outside \text{}
         const textStripped = p.replace(/\\text\s*\{[^}]*\}/g, '');
         const words = textStripped.match(/[a-zA-Z]{3,}/g) || [];
-        const mathKeywords = new Set(['sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'ln', 'lim', 'max', 'min', 'det', 'exp', 'deg', 'dim', 'ker', 'gcd', 'lcm', 'sqrt', 'frac', 'mathrm', 'mathbf', 'mathit', 'mathbb', 'mathcal', 'right', 'left', 'begin', 'aligned', 'matrix', 'cases']);
+        const mathKeywords = new Set([
+          'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'ln', 'lim', 'max', 'min', 'det',
+          'exp', 'deg', 'dim', 'ker', 'gcd', 'lcm', 'sqrt', 'frac', 'mathrm', 'mathbf', 'mathit',
+          'mathbb', 'mathcal', 'right', 'left', 'begin', 'aligned', 'matrix', 'cases', 'theta',
+          'alpha', 'beta', 'lambda', 'omega', 'phi', 'psi', 'rho', 'sigma', 'tau', 'mu', 'nu',
+          'pi', 'eta', 'zeta', 'delta', 'gamma'
+        ]);
         const proseWords = words.filter(w => !mathKeywords.has(w.toLowerCase()));
 
         if (proseWords.length >= 2) {
-          // English prose with math symbols! Leave prose as normal HTML, wrap only math tokens
           let prose = p;
           prose = prose.replace(/(?<!\$)\\([a-zA-Z]+(?:\s*\{[^}]*\})*)(?!\$)/g, (m) => `$${m}$`);
           prose = prose.replace(/(?<![\\\$a-zA-Z])([A-Z](?:_\{?[0-9a-zA-Z]+\}?)?)(?![a-zA-Z\$])/g, (m) => `$${m}$`);
@@ -141,14 +228,13 @@ function preprocessMarksContent(rawStr) {
     return match;
   });
 
-  // 4. Wrap naked LaTeX math in non-delimited segments
-  // Split strictly by existing $ delimiters AND <br/> tags so HTML tags are NEVER mangled!
-  const segments = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$|<br\/>)/g);
+  // 5. Wrap naked LaTeX math in non-delimited segments
+  // Split strictly by existing $ delimiters, <br/> tags, AND <img> tags so HTML is NEVER mangled!
+  const segments = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]+?\$|<br\/>|<img\b[^>]*>)/g);
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
-    if (!seg || seg.startsWith('$') || seg === '<br/>') continue;
+    if (!seg || seg.startsWith('$') || seg === '<br/>' || seg.startsWith('<img')) continue;
 
-    // Check if segment contains LaTeX math commands (e.g. \sqrt, \frac, \mathbb, \left, \right)
     if (/\\[a-zA-Z]+/.test(seg)) {
       const textStripped = seg.replace(/\\text\s*\{[^}]*\}/g, '');
       const words = textStripped.match(/[a-zA-Z]{3,}/g) || [];
@@ -162,47 +248,37 @@ function preprocessMarksContent(rawStr) {
       const proseWords = words.filter(w => !mathKeywords.has(w.toLowerCase()));
 
       if (proseWords.length <= 1 && seg.trim().length > 3) {
-        // Pure equation segment: wrap safely in $$
         segments[i] = `$$${seg.trim()}$$`;
       } else {
-        // Mixed prose and math: wrap set definitions like S_1 = \{ ... \} and Greek/math symbols
-        segments[i] = seg.replace(/([a-zA-Z0-9_\{\}\^:]+\s*=\s*\\(?:left)?\\?\{[^$]+?\\(?:right)?\\?\})/g, '$$$1$$')
+        // Use replacer functions to safely preserve backslashes and prevent JS '$' substitution bugs
+        segments[i] = seg.replace(/([a-zA-Z0-9_\{\}\^:]+\s*=\s*\\(?:left)?\\?\{[^$]+?\\(?:right)?\\?\})/g, (m) => `$${m}$`)
                          .replace(/\\(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|sqrt|frac|pm|mp|times|div|le|ge|ne|approx|equiv|partial|nabla|infty|int|sum|prod|cup|cap|subset|subseteq|notin|to|rightarrow|leftarrow|leftrightarrow|dots|cdots|ldots|cdot|circ|degree)\b(?:\s*\{[^}]*\})?/g, (m) => `$${m}$`);
       }
     }
   }
   content = segments.join('');
 
-  // 5. If there are environments without $$ like \begin{aligned} ... \end{aligned}
   if (!content.includes('$$') && /\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|cases|array|gather|equation)\*?\}/.test(content)) {
-    content = content.replace(/(\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|cases|array|gather|equation)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|cases|array|gather|equation)\*?\})/g, '$$$1$$');
+    content = content.replace(/(\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|cases|array|gather|equation)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|cases|array|gather|equation)\*?\})/g, (_m, block) => `$$${block}$$`);
   }
 
   return content;
 }
 
 /**
- * Parses a string containing LaTeX and HTML tags into safely rendered React nodes with KaTeX.
+ * Parses a string containing LaTeX, HTML tags, and diagrams into safely rendered React nodes with KaTeX.
  */
 export function renderMathContent(rawInput) {
   const rawStr = toSafeString(rawInput);
   if (!rawStr.trim()) return null;
 
   try {
-    // Proxy image URLs to avoid CORS and broken images during print
-    const proxied = rawStr.replace(/<img([^>]+)src=["']([^"']+)["']([^>]*)>/gi, (match, before, src, after) => {
-      if (src.startsWith('data:') || src.startsWith('/api/proxy-image')) {
-        return match;
-      }
-      const proxiedSrc = `/api/proxy-image?url=${encodeURIComponent(src)}`;
-      return `<img ${before} src="${proxiedSrc}" ${after} class="max-w-full h-auto inline-block my-2" loading="eager" />`;
-    });
-
+    const proxied = rewriteQuestionImages(rawStr);
     const content = preprocessMarksContent(proxied);
 
-    // Tokenize string by math delimiters
     const tokens = [];
-    const regex = /(\$\$[\s\S]*?\$\$|\$([^$]+?)\$|\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\})/g;
+    // Tokenize string by math delimiters AND <img> tags to guarantee images are never parsed as math
+    const regex = /(\$\$[\s\S]*?\$\$|\$([^$]+?)\$|\\begin\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}[\s\S]*?\\end\{(?:aligned|align|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|array|gather|equation|split|multline)\*?\}|<img\b[^>]*>)/g;
     let lastIndex = 0;
     let match;
 
@@ -215,27 +291,31 @@ export function renderMathContent(rawInput) {
       }
 
       const matchedStr = match[0];
-      let formula = matchedStr;
-      let isBlock = false;
+      if (matchedStr.startsWith('<img')) {
+        tokens.push({ type: 'html', value: matchedStr });
+      } else {
+        let formula = matchedStr;
+        let isBlock = false;
 
-      if (matchedStr.startsWith('$$') && matchedStr.endsWith('$$')) {
-        formula = matchedStr.slice(2, -2);
-        isBlock = true;
-      } else if (matchedStr.startsWith('\\begin{')) {
-        formula = matchedStr;
-        isBlock = true;
-      } else if (matchedStr.startsWith('$') && matchedStr.endsWith('$')) {
-        formula = matchedStr.slice(1, -1);
-        if (formula.includes('\\begin{') || formula.includes('\\\\')) {
+        if (matchedStr.startsWith('$$') && matchedStr.endsWith('$$')) {
+          formula = matchedStr.slice(2, -2);
           isBlock = true;
+        } else if (matchedStr.startsWith('\\begin{')) {
+          formula = matchedStr;
+          isBlock = true;
+        } else if (matchedStr.startsWith('$') && matchedStr.endsWith('$')) {
+          formula = matchedStr.slice(1, -1);
+          if (formula.includes('\\begin{') || formula.includes('\\\\')) {
+            isBlock = true;
+          }
         }
-      }
 
-      tokens.push({
-        type: 'math',
-        value: sanitizeFormula(formula),
-        displayMode: isBlock
-      });
+        tokens.push({
+          type: 'math',
+          value: sanitizeFormula(formula),
+          displayMode: isBlock
+        });
+      }
 
       lastIndex = regex.lastIndex;
     }
@@ -248,7 +328,7 @@ export function renderMathContent(rawInput) {
     }
 
     return (
-      <span className="math-rendered leading-relaxed">
+      <span className="math-rendered leading-relaxed inline-block max-w-full">
         {tokens.map((token, idx) => {
           if (token.type === 'math') {
             try {
@@ -272,7 +352,7 @@ export function renderMathContent(rawInput) {
             }
           }
 
-          // HTML / Text token: clean orphaned $ artifacts and convert \n to <br/>
+          // HTML token: contains text, formatting, or safely proxied <img>
           const cleanText = token.value.replace(/(?:^|\s)\$\s*(?:$|\s)/g, ' ');
           const formattedHtml = cleanText.replace(/\n/g, '<br/>');
           return (

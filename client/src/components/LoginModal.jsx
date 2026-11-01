@@ -22,9 +22,9 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess, onSelectDe
     setError('');
 
     try {
-      // Clean token of possible surrounding quotes or Bearer prefix
-      let cleaned = tokenInput.trim();
-      cleaned = cleaned.replace(/^Bearer\s+/i, '').replace(/^['"]+|['"]+$/g, '');
+      // Clean token of possible surrounding quotes, whitespace, or Bearer prefix
+      let cleaned = tokenInput.trim().replace(/^Bearer\s+/i, '').replace(/^['"]+|['"]+$/g, '').trim();
+      cleaned = cleaned.replace(/\s+/g, '');
       const res = await api.verifyToken(cleaned);
       if (res.success) {
         onLoginSuccess(res.user);

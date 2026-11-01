@@ -337,17 +337,28 @@ export default function QuestionFilterBar({
 
         {/* Global Select / Deselect */}
         <div className="flex items-center gap-2">
+          {filteredCount < totalCount && selectedCount < filteredCount && (
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="px-3 py-1 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-full flex items-center gap-1.5 transition-all border border-emerald-300 shadow-2xs cursor-pointer"
+              title="Select only currently filtered questions"
+            >
+              <CheckSquare className="w-3.5 h-3.5 text-emerald-600" /> Select Filtered ({filteredCount})
+            </button>
+          )}
           <button
-            onClick={selectedCount === totalCount ? onDeselectAll : onSelectAll}
+            type="button"
+            onClick={selectedCount > 0 ? onDeselectAll : onSelectAll}
             className="px-3.5 py-1 text-xs font-bold text-[#0071e3] bg-blue-50/70 hover:bg-blue-100/80 rounded-full flex items-center gap-1.5 transition-all border border-blue-200/60 shadow-2xs cursor-pointer"
           >
-            {selectedCount === totalCount ? (
+            {selectedCount > 0 ? (
               <>
-                <Square className="w-3.5 h-3.5" /> Deselect All
+                <Square className="w-3.5 h-3.5" /> Deselect All ({selectedCount})
               </>
             ) : (
               <>
-                <CheckSquare className="w-3.5 h-3.5" /> Select All ({totalCount})
+                <CheckSquare className="w-3.5 h-3.5" /> Select All ({filteredCount})
               </>
             )}
           </button>

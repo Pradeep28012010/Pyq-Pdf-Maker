@@ -42,7 +42,7 @@ export default function QuestionList({
     );
   }
 
-  const allSelected = questions.length > 0 && selectedIds.size === questions.length;
+  const allSelected = questions.length > 0 && questions.every(q => selectedIds.has(q._id || q.id));
 
   return (
     <div className="no-print glass-panel rounded-3xl p-6 space-y-4 transition-all duration-300">

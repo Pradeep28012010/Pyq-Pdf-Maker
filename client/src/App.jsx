@@ -154,7 +154,7 @@ export default function App() {
       setBuckets(finalBuckets);
       setSelectedBucket(allPyqsBucket);
       setAllQuestions(allDemoQs);
-      setSelectedQuestionIds(new Set(allDemoQs.map(q => q._id)));
+      setSelectedQuestionIds(new Set(allDemoQs.map(q => q._id || q.id)));
     }
   };
 
@@ -370,12 +370,12 @@ export default function App() {
         setAllQuestions(allDemoQs);
         setChapterMasterQuestions(allDemoQs);
         chapterMasterRef.current = allDemoQs;
-        setSelectedQuestionIds(new Set(allDemoQs.map(q => q._id)));
+        setSelectedQuestionIds(new Set(allDemoQs.map(q => q._id || q.id)));
         setBuckets(prev => calculateBucketCounts(allDemoQs, prev));
       } else {
         const qs = demoDataStore.questions[bucketId] || [];
         setAllQuestions(qs);
-        setSelectedQuestionIds(new Set(qs.map(q => q._id)));
+        setSelectedQuestionIds(new Set(qs.map(q => q._id || q.id)));
       }
       return;
     }
@@ -748,7 +748,7 @@ export default function App() {
     if (isDemo && demoDataStore) {
       const qs = demoDataStore.questions?.[selectedBucket?.id || 'bucket-1'] || [];
       setAllQuestions(qs);
-      setSelectedQuestionIds(new Set(qs.map(q => q._id)));
+      setSelectedQuestionIds(new Set(qs.map(q => q._id || q.id)));
       return;
     }
 
@@ -797,7 +797,8 @@ export default function App() {
     } else if (preset === '2024') {
       const subset = allQuestions.filter(q => (q.previousYearPapers?.[0]?.title || '').includes('2024'));
       setSelectedQuestionIds(new Set(subset.map(q => q._id || q.id)));
-      setYearFilter('2024');
+      setSelectedYears(new Set(['2024']));
+      setYearFilter('all');
     } else if (preset === 'numerical') {
       const subset = allQuestions.filter(q => q.type === 'numerical');
       setSelectedQuestionIds(new Set(subset.map(q => q._id || q.id)));

@@ -43,18 +43,34 @@ export default function PrintableDocument({
   const getAnswerText = (q) => {
     if (!q) return 'N/A';
     if (q.type === 'numerical') {
-      return q.correctValue !== undefined && q.correctValue !== null
-        ? String(q.correctValue)
-        : (q.numericalLowerLimit !== undefined
-          ? `${q.numericalLowerLimit} to ${q.numericalUpperLimit}`
-          : 'Refer Solution');
+      if (q.correctValue !== undefined && q.correctValue !== null) return String(q.correctValue);
+      if (q.numericalAnswer !== undefined && q.numericalAnswer !== null) return String(q.numericalAnswer);
+      if (q.answer !== undefined && q.answer !== null) return String(q.answer);
+      if (q.numericalLowerLimit !== undefined && q.numericalUpperLimit !== undefined) {
+        return q.numericalLowerLimit === q.numericalUpperLimit
+          ? String(q.numericalLowerLimit)
+          : `${q.numericalLowerLimit} to ${q.numericalUpperLimit}`;
+      }
+      return 'Refer Solution';
     }
 
-    if (Array.isArray(q.options)) {
+    if (Array.isArray(q.options) && q.options.length > 0) {
       const correctIndices = q.options
-        .map((opt, idx) => (opt && typeof opt === 'object' && opt.isCorrect ? String.fromCharCode(65 + idx) : null))
+        .map((opt, idx) => (opt && typeof opt === 'object' && (opt.isCorrect || opt.correct) ? String.fromCharCode(65 + idx) : null))
         .filter(Boolean);
-      return correctIndices.length > 0 ? correctIndices.join(', ') : 'Refer Solution';
+      if (correctIndices.length > 0) return correctIndices.join(', ');
+    }
+
+    if (q.correctOption !== undefined && q.correctOption !== null) {
+      const num = Number(q.correctOption);
+      if (!isNaN(num) && num >= 0 && num < 26) return String.fromCharCode(65 + num);
+      return String(q.correctOption);
+    }
+    if (q.correctAnswer !== undefined && q.correctAnswer !== null) {
+      return String(q.correctAnswer);
+    }
+    if (q.answer !== undefined && q.answer !== null) {
+      return String(q.answer);
     }
 
     return 'Refer Solution';
@@ -194,7 +210,7 @@ export default function PrintableDocument({
                       <div className="mt-1.5 pl-3.5 space-y-0.5">
                         {Array.isArray(q.options) && q.options.map((opt, oIdx) => {
                           const letter = String.fromCharCode(65 + oIdx);
-                          const optContent = opt && typeof opt === 'object' ? (opt.text || opt.option || opt.content || '') : String(opt || '');
+                          const optContent = opt && typeof opt === 'object' ? (opt.text || opt.option || opt.content || opt.value || opt.title || opt.statement || '') : String(opt || '');
                           return (
                             <div
                               key={opt?.id || oIdx}
