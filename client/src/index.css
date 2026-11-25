@@ -322,6 +322,10 @@
   max-width: 100% !important;
 }
 
+.math-content .katex .mtable {
+  white-space: nowrap !important;
+}
+
 .math-content table {
   width: 100% !important;
   border-collapse: separate !important;

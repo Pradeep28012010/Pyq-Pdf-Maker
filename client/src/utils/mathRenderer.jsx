@@ -311,13 +311,42 @@ function convertMathMLToLatex(rawStr) {
         return `\\left${open} ${children.map(nodeToLatex).join('')} \\right${close}`;
       }
       case 'mtable': {
-        const rows = Array.from(node.querySelectorAll('mtr'));
-        if (rows.length === 0) return children.map(nodeToLatex).join('');
-        const rowStrs = rows.map(r => Array.from(r.querySelectorAll('mtd')).map(nodeToLatex).join(' & '));
-        return `\\begin{matrix} ${rowStrs.join(' \\\\ ')} \\end{matrix}`;
+        const directRows = Array.from(node.children || []).filter(
+          c => (c.tagName || '').toLowerCase() === 'mtr'
+        );
+        if (directRows.length === 0) return children.map(nodeToLatex).join('');
+
+        const parsedRows = directRows.map(r => {
+          const directCells = Array.from(r.children || []).filter(
+            c => (c.tagName || '').toLowerCase() === 'mtd'
+          );
+          return directCells.map(cell => nodeToLatex(cell).trim());
+        });
+
+        const colCount = Math.max(1, ...parsedRows.map(r => r.length));
+        const frame = (node.getAttribute('frame') || '').toLowerCase();
+        const colLines = (node.getAttribute('columnlines') || '').toLowerCase();
+        const rowLines = (node.getAttribute('rowlines') || '').toLowerCase();
+        const hasVLines = (frame && frame !== 'none') || (colLines && colLines !== 'none');
+        const hasHLines = (frame && frame !== 'none') || (rowLines && rowLines !== 'none');
+
+        const colSpec = hasVLines
+          ? `|${Array(colCount).fill('c').join('|')}|`
+          : Array(colCount).fill('c').join(' ');
+
+        const rowStrs = parsedRows.map(cells => cells.join(' & '));
+        const body = hasHLines
+          ? `\\hline ${rowStrs.join(' \\\\ \\hline ')} \\\\ \\hline`
+          : rowStrs.join(' \\\\ ');
+
+        return `\\begin{array}{${colSpec}} ${body} \\end{array}`;
       }
-      case 'mtr':
-        return Array.from(node.children || []).map(nodeToLatex).join(' & ');
+      case 'mtr': {
+        const directCells = Array.from(node.children || []).filter(
+          c => (c.tagName || '').toLowerCase() === 'mtd'
+        );
+        return (directCells.length > 0 ? directCells : children).map(nodeToLatex).join(' & ');
+      }
       case 'mtd':
         return children.map(nodeToLatex).join('');
       default:
@@ -439,11 +468,15 @@ function flattenEnvironments(text) {
 
     if (endPos !== -1) {
       const inner = res.slice(startPos + openTag.length, endPos - actualCloseLen);
-      let cleanInner = inner
-        .replace(new RegExp(`\\\\begin\\{${envName}\\*?\\}`, 'gi'), ' ')
-        .replace(new RegExp(`\\\\end\\{${envName}\\*?\\}`, 'gi'), ' ')
-        .replace(/<\s*br\s*\/?\s*>/gi, ' \\\\ ')
-        .trim();
+      // Only strip nested redundant \begin{aligned}/\begin{align} inside aligned/align;
+      // preserve nested \begin{array}/\begin{matrix}/\begin{cases} (e.g. multi-line table cells!)
+      let cleanInner = inner.replace(/<\s*br\s*\/?\s*>/gi, ' \\\\ ').trim();
+      if (envName.toLowerCase().startsWith('align')) {
+        cleanInner = cleanInner
+          .replace(new RegExp(`\\\\begin\\{${envName}\\*?\\}`, 'gi'), ' ')
+          .replace(new RegExp(`\\\\end\\{${envName}\\*?\\}`, 'gi'), ' ')
+          .trim();
+      }
 
       // Break multi-step single-row '&' derivations into vertical stacked rows
       if (envName.toLowerCase().startsWith('align')) {
