@@ -420,11 +420,43 @@ router.post('/questions/batch', async (req, res) => {
 // In-memory cache for proxied images (max 500 images)
 const imageCache = new Map();
 
-// High-reliability Image Proxy with multi-CDN fallback, unescaped queries, & caching
+// High-reliability Image Proxy with multi-CDN fallback, S3 param preservation, & caching
 router.get('/proxy-image', async (req, res) => {
-  let { url } = req.query;
-  if (!url || typeof url !== 'string') return res.status(400).send('URL required');
-  url = url.trim();
+  let url = '';
+  let token = (typeof req.query.token === 'string' ? req.query.token : '') ||
+              req.headers.authorization?.replace('Bearer ', '') || '';
+
+  // Parse from req.originalUrl so AWS S3 presigned query params (&X-Amz-...) are never split or double-decoded
+  if (req.originalUrl && req.originalUrl.includes('url=')) {
+    const queryIdx = req.originalUrl.indexOf('url=');
+    let rest = req.originalUrl.substring(queryIdx + 4);
+    const tokenMatch = rest.match(/&token=([^&]*)/);
+    if (tokenMatch) {
+      if (!token) {
+        try {
+          token = decodeURIComponent(tokenMatch[1]);
+        } catch {
+          token = tokenMatch[1];
+        }
+      }
+      rest = rest.slice(0, tokenMatch.index) + rest.slice(tokenMatch.index + tokenMatch[0].length);
+    }
+
+    rest = rest.trim();
+    if (!/^https?:\/\//i.test(rest)) {
+      try {
+        url = decodeURIComponent(rest).trim();
+      } catch {
+        url = rest;
+      }
+    } else {
+      url = rest;
+    }
+  } else {
+    url = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+  }
+
+  if (!url) return res.status(400).send('URL required');
 
   // Unescape HTML entities that break AWS S3 presigned URLs (e.g. &amp;Signature -> &Signature)
   url = url
@@ -435,7 +467,7 @@ router.get('/proxy-image', async (req, res) => {
 
   const MARKS_CDN = 'https://cdn-question-pool.getmarks.app';
 
-  // If relative URL, resolve against MARKS_CDN
+  // Resolve relative/protocol-relative URLs against MARKS CDN
   if (url.startsWith('//')) {
     url = `https:${url}`;
   } else if (url.startsWith('/')) {
@@ -449,52 +481,101 @@ router.get('/proxy-image', async (req, res) => {
   // Check cache first
   if (imageCache.has(url)) {
     const cached = imageCache.get(url);
+    res.set('Access-Control-Allow-Origin', '*');
     res.set('Content-Type', cached.contentType);
     res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
     return res.send(cached.buffer);
   }
 
-  // Prepare candidate URLs (primary + potential alternative CDN domains)
+  // Prepare candidate URLs (primary first; alternative CDN hosts only when not S3-presigned)
+  const isSignedUrl = /[?&](X-Amz-Signature|Signature)=/i.test(url);
   const candidateUrls = [url];
-  if (url.includes('production.getmarks.app')) {
-    candidateUrls.push(url.replace('production.getmarks.app', 'cdn-question-pool.getmarks.app'));
-    candidateUrls.push(url.replace('production.getmarks.app', 'cdn-assets.getmarks.app'));
-  } else if (url.includes('cdn-question-pool.getmarks.app')) {
-    candidateUrls.push(url.replace('cdn-question-pool.getmarks.app', 'cdn-assets.getmarks.app'));
+  if (!isSignedUrl) {
+    if (url.includes('production.getmarks.app')) {
+      candidateUrls.push(url.replace('production.getmarks.app', 'cdn-question-pool.getmarks.app'));
+      candidateUrls.push(url.replace('production.getmarks.app', 'cdn-assets.getmarks.app'));
+    } else if (url.includes('cdn-question-pool.getmarks.app')) {
+      candidateUrls.push(url.replace('cdn-question-pool.getmarks.app', 'cdn-assets.getmarks.app'));
+      candidateUrls.push(url.replace('cdn-question-pool.getmarks.app', 'production.getmarks.app'));
+    } else if (url.includes('cdn-assets.getmarks.app')) {
+      candidateUrls.push(url.replace('cdn-assets.getmarks.app', 'cdn-question-pool.getmarks.app'));
+      candidateUrls.push(url.replace('cdn-assets.getmarks.app', 'production.getmarks.app'));
+    }
   }
 
+  const baseAccept = 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8';
+
   for (const candidate of candidateUrls) {
-    try {
-      const response = await axios.get(candidate, {
-        responseType: 'arraybuffer',
-        headers: {
-          'User-Agent': USER_AGENT,
-          'Referer': 'https://web.getmarks.app/',
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-        },
-        timeout: 12000
+    const isMarksHost = candidate.includes('getmarks.app');
+    const headerVariants = [];
+
+    // Only attach MARKS Authorization header to getmarks.app hosts (S3 rejects extra Authorization headers)
+    if (token && isMarksHost) {
+      headerVariants.push({
+        'User-Agent': USER_AGENT,
+        'Authorization': `Bearer ${token}`,
+        'Referer': 'https://web.getmarks.app/',
+        'Origin': 'https://web.getmarks.app',
+        'Accept': baseAccept
       });
+      headerVariants.push({
+        'User-Agent': USER_AGENT,
+        'Authorization': `Bearer ${token}`,
+        'Accept': baseAccept
+      });
+    }
 
-      const contentType = response.headers['content-type'] || 'image/png';
-      const buffer = Buffer.from(response.data);
+    headerVariants.push({
+      'User-Agent': USER_AGENT,
+      'Referer': 'https://web.getmarks.app/',
+      'Origin': 'https://web.getmarks.app',
+      'Accept': baseAccept
+    });
+    headerVariants.push({
+      'User-Agent': USER_AGENT,
+      'Accept': baseAccept
+    });
 
-      // Store in memory cache (evict oldest if size >= 500)
-      if (imageCache.size >= 500) {
-        const firstKey = imageCache.keys().next().value;
-        imageCache.delete(firstKey);
+    for (const hdrs of headerVariants) {
+      try {
+        const response = await axios.get(candidate, {
+          responseType: 'arraybuffer',
+          headers: hdrs,
+          timeout: 10000
+        });
+
+        const contentType = (response.headers['content-type'] || 'image/png').toLowerCase();
+        const buffer = Buffer.from(response.data);
+        if (buffer.length === 0) continue;
+
+        // Reject XML/HTML/JSON error responses masquerading as HTTP 200
+        if (contentType.includes('xml') && !contentType.includes('svg')) continue;
+        if (contentType.includes('html') || contentType.includes('json')) continue;
+        const headText = buffer.subarray(0, 64).toString('utf8').trim().toLowerCase();
+        if (headText.startsWith('<!doctype') || headText.startsWith('<html') || headText.startsWith('<?xml') || headText.startsWith('<error') || headText.startsWith('{"success":false')) {
+          continue;
+        }
+
+        // Store in memory cache (evict oldest if size >= 500)
+        if (imageCache.size >= 500) {
+          const firstKey = imageCache.keys().next().value;
+          imageCache.delete(firstKey);
+        }
+        imageCache.set(url, { contentType, buffer });
+
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Content-Type', contentType);
+        res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+        return res.send(buffer);
+      } catch {
+        // Try next header variant or candidate URL
       }
-      imageCache.set(url, { contentType, buffer });
-
-      res.set('Access-Control-Allow-Origin', '*');
-      res.set('Content-Type', contentType);
-      res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-      return res.send(buffer);
-    } catch {
-      // Try next candidate
     }
   }
 
   console.warn(`proxy-image failed for all candidates of: ${url}`);
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cache-Control', 'no-store');
   return res.status(404).send('Image failed');
 });
 

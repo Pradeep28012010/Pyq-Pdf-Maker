@@ -227,7 +227,21 @@
     page-break-inside: auto !important;
     display: inline-block;
     width: 100%;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
     margin-bottom: 6px !important;
+  }
+
+  .math-rendered,
+  .math-content {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
   }
 
   /* Prevent orphan titles alone at bottom of page */
@@ -242,13 +256,37 @@
     break-inside: avoid !important;
   }
 
-  /* KaTeX mathematical formulas: compact margins for print */
+  /* KaTeX mathematical formulas: compact margins, wrap in columns, NEVER show scrollbars */
   .katex-display {
     margin: 0.15em 0 !important;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .katex-display > .katex {
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+    max-width: 100% !important;
+  }
+
+  .katex-display > .katex > .katex-html {
+    overflow-x: visible !important;
+    white-space: normal !important;
+    flex-wrap: wrap !important;
   }
 
   .katex {
-    font-size: 0.95em;
+    font-size: 0.92em;
+    white-space: normal !important;
+    max-width: 100% !important;
+  }
+
+  .katex .base {
+    white-space: normal !important;
   }
 
   /* Question diagrams in print: scale to column width */
@@ -261,6 +299,29 @@
 }
 
 /* Question Tables and Match-the-Column Diagram Layouts */
+.math-content,
+.math-rendered {
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.math-content .katex-display {
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.math-content .katex-display > .katex,
+.math-content .katex-display > .katex > .katex-html,
+.math-content .katex .base {
+  white-space: normal !important;
+  max-width: 100% !important;
+}
+
 .math-content table {
   width: 100% !important;
   border-collapse: separate !important;
